@@ -22,6 +22,30 @@ void VRSettingsPage::BuildPage()
    // Positioning and physical setup are defined for the user's rig, so these items are always saved to the application settings (never as table overrides)
    const auto addGlobalOnlyItem = [this](std::unique_ptr<InGameUIItem> item) { AddItem(std::move(item)).m_globalOnly = true; };
 
+#ifdef ENABLE_XR
+   AddItem(std::make_unique<InGameUIItem>(InGameUIItem::LabelType::Header, "Accessibility"s));
+   addGlobalOnlyItem(std::make_unique<InGameUIItem>( //
+      Settings::m_propPlayerVR_SeatedMode, //
+      [this]() { return m_player->m_vrDevice->IsSeatedMode(); }, //
+      [this](bool v) { m_player->m_vrDevice->SetSeatedMode(v); }));
+   addGlobalOnlyItem(std::make_unique<InGameUIItem>( //
+      Settings::m_propPlayerVR_SeatedHeight, 1.f, "%4.1f cm"s, //
+      [this]() { return m_player->m_vrDevice->GetSeatedHeight(); }, //
+      [this](float, float v) { m_player->m_vrDevice->SetSeatedHeight(v); }));
+   addGlobalOnlyItem(std::make_unique<InGameUIItem>( //
+      Settings::m_propPlayerVR_SeatedDistance, 1.f, "%4.1f cm"s, //
+      [this]() { return m_player->m_vrDevice->GetSeatedDistance(); }, //
+      [this](float, float v) { m_player->m_vrDevice->SetSeatedDistance(v); }));
+   addGlobalOnlyItem(std::make_unique<InGameUIItem>( //
+      Settings::m_propPlayerVR_SeatedTilt, 1.f, "%4.1f deg"s, //
+      [this]() { return m_player->m_vrDevice->GetSeatedTilt(); }, //
+      [this](float, float v) { m_player->m_vrDevice->SetSeatedTilt(v); }));
+   AddItem(std::make_unique<InGameUIItem>("Recenter Seated View"s, "Settle into your playing position, then select to anchor the table to your current headset position."s,
+      [this]() { m_player->m_vrDevice->RecenterTable(); }));
+   AddItem(std::make_unique<InGameUIItem>(InGameUIItem::LabelType::Info,
+      "Seated mode uses its own height and distance instead of standing view offsets. Height and distance rotate with seated tilt. Save changes to use these settings across tables."s));
+#endif
+
    AddItem(std::make_unique<InGameUIItem>(InGameUIItem::LabelType::Header, "View Offset"s));
 
    addGlobalOnlyItem(std::make_unique<InGameUIItem>( //

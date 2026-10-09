@@ -156,6 +156,23 @@ public:
    const Vertex3Ds& GetSceneOffset() const { return m_tablePos; }
    void SetSceneOrientation(float orientation) { m_orientation = orientation; m_worldDirty = true; }
    void SetSceneOffset(const Vertex3Ds& pos) { m_tablePos = pos; m_worldDirty = true; }
+   bool IsSeatedMode() const { return m_seatedMode; }
+   void SetSeatedMode(bool seated)
+   {
+      if (m_seatedMode == seated)
+         return;
+      m_seatedMode = seated;
+      m_seatedAnchorValid = false;
+      m_worldDirty = true;
+      if (seated)
+         RecenterTable();
+   }
+   float GetSeatedHeight() const { return m_seatedHeight; }
+   void SetSeatedHeight(float height) { m_seatedHeight = height; m_worldDirty = true; }
+   float GetSeatedDistance() const { return m_seatedDistance; }
+   void SetSeatedDistance(float distance) { m_seatedDistance = distance; m_worldDirty = true; }
+   float GetSeatedTilt() const { return m_seatedTilt; }
+   void SetSeatedTilt(float tilt) { m_seatedTilt = tilt; m_worldDirty = true; }
    void SaveVRSettings(Settings& settings) const;
 
    void UpdateVRPosition(PartGroupData::SpaceReference spaceRef, ModelViewProj& mvp);
@@ -175,6 +192,12 @@ private:
    float m_orientation = 0.0f;
    Vertex3Ds m_tablePos;
    float m_slope = 0.0f;
+   bool m_seatedMode = false;
+   float m_seatedHeight = -30.f;
+   float m_seatedDistance = 30.f;
+   float m_seatedTilt = 0.f;
+   bool m_seatedAnchorValid = false;
+   Vertex3Ds m_seatedHeadPosition { 0.f, 0.f, 0.f }; // Tracking space, VPU; captured only when recentering
 
    float m_predictedDisplayTimestamp = 0.f;
 
@@ -217,7 +240,7 @@ public:
 
    Matrix3D* GetVisibilityMaskProjs() { return &m_nextProj[0]; }
 
-   void EnableControllerViewCentering(bool enable) { m_controllerViewCentering = enable; }
+   void EnableControllerViewCentering(bool enable) { m_controllerViewCentering = enable && !m_seatedMode; }
    bool IsControllerViewCenteringEnabled() const { return m_controllerViewCentering; }
 
    enum class SwapchainType : uint8_t
