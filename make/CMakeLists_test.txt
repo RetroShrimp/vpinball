@@ -176,6 +176,8 @@ if(PLATFORM STREQUAL "windows")
       setupapi.lib
       dinput8.lib
       spatialaudio.lib
+      mysofa.lib
+      zlibstatic.lib
       $<IF:$<STREQUAL:${ARCH},x64>,freeimage64.lib,freeimage.lib>
       $<IF:$<STREQUAL:${ARCH},x64>,SDL364.lib,SDL3.lib>
    )
