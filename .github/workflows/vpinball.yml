@@ -277,4 +277,3 @@ jobs:
           name: VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
           path: tmp/*
           archive: false
-
