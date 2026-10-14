@@ -238,6 +238,10 @@ PropFloatDyn(PlayerVR, Orientation, "View orientation"s, "VR view orientation"s,
 PropFloatDyn(PlayerVR, TableX, "View Offset X"s, "VR view X offset"s, -100.f, 100.f, 0.f);
 PropFloatDyn(PlayerVR, TableY, "View Offset Y"s, "VR view Y offset"s, -100.f, 100.f, 0.f);
 PropFloatDyn(PlayerVR, TableZ, "View Offset Z"s, "VR view Z offset"s, -100.f, 100.f, 0.f);
+PropBool(PlayerVR, SeatedMode, "Seated Mode"s, "Position the table relative to your recentered headset for seated or reclined play. This only changes the VR view, not the physics."s, false);
+PropFloat(PlayerVR, SeatedHeight, "Seated Height"s, "Height of the front of the playfield relative to your recentered eyes, in centimeters. Negative values lower it. This offset rotates with seated tilt."s, -150.f, 150.f, -30.f);
+PropFloat(PlayerVR, SeatedDistance, "Seated Distance"s, "Distance from your recentered eyes to the front of the playfield, in centimeters. This offset rotates with seated tilt."s, 10.f, 200.f, 30.f);
+PropFloat(PlayerVR, SeatedTilt, "Seated Tilt"s, "Visual recline angle in degrees. Positive values move the table up into a reclined view. Does not change playfield slope or ball physics."s, -135.f, 135.f, 0.f);
 PropBool(
    PlayerVR, UsePassthroughColor, "Color Keyed Passthrough"s, "Replace VR background by full black to allow color keyed passthrough (for example using Virtual Desktop, setting passthrough to sharp full black)"s, false);
 PropEnum(PlayerVR, DesktopDisplay, "Desktop display"s, "Select the content to show on the desktop display while playing in VR"s, int, 1, "Disabled"s,
