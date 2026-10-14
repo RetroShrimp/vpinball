@@ -695,7 +695,7 @@ std::shared_ptr<BaseTexture> Renderer::EnvmapPrecalc(const std::shared_ptr<const
       progschj::ThreadPool pool(g_app->GetLogicalNumberOfProcessors());
 
       for (unsigned int y = 0; y < rad_env_yres; ++y) {
-         pool.enqueue([y, rad_envmap, rad_format, rad_env_xres, rad_env_yres, envmap, env_format, env_xres, env_yres] {
+         pool.enqueue_block([y, rad_envmap, rad_format, rad_env_xres, rad_env_yres, envmap, env_format, env_xres, env_yres] {
             for (unsigned int x = 0; x < rad_env_xres; ++x)
             {
                // transfo from envmap to normal direction
@@ -1648,12 +1648,12 @@ void Renderer::DrawBulbLightBuffer()
 
    // Restore state and render target
    m_renderDevice->SetRenderTarget(initial_rt->m_name, initial_rt->m_rt);
-   initial_rt->m_name += '-';
+   initial_rt->MarkInterrupted();
 
-   #if defined(ENABLE_DX9)
+#if defined(ENABLE_DX9)
    // For some reason, DirectX 9 will not handle correctly the null texture, so we just disable this optimization
    hasLight = true;
-   #endif
+#endif
    if (hasLight)
    {
       // Declare dependency on Bulb Light buffer (actually rendered to the bloom buffer texture)
