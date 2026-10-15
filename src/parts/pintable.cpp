@@ -3,6 +3,7 @@
 #include "core/stdafx.h"
 #include "pintable.h"
 
+#include "audio/AudioPlayer.h"
 #include "core/editablereg.h"
 #include "core/resourceid.h"
 #include "core/ScriptGlobalTable.h"
@@ -31,15 +32,12 @@
 #include "parts/textbox.h"
 #include "parts/timer.h"
 #include "parts/trigger.h"
+#include "physics/PhysicsEngine.h"
 #include "renderer/Renderer.h"
 #include "ThreadPool.h"
 #include "tinyxml2/tinyxml2.h"
 #include "ui/VPXFileFeedback.h"
 #include "ui/live/LiveUI.h"
-#ifdef VPX_ENABLE_WIN32_EDITOR
-#include "ui/win/codeview.h"
-#include "ui/win/PinTableWnd.h"
-#endif
 #include "utils/BiffReader.h"
 #include "utils/BiffWriter.h"
 #include "utils/hash.h"
@@ -356,20 +354,16 @@ void PinTable::AddPart(IEditable *const part)
    part->AddRef();
    part->m_ptable = this;
    m_vedit.push_back(part);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
       m_tableEditor->OnPartAdded(part);
-#endif
    if (auto scriptable = part->GetIScriptable(); scriptable)
    {
       assert(!scriptable->m_name.empty());
       const auto id = lowerCase(scriptable->m_name);
       assert(m_scriptableNames.find(id) == m_scriptableNames.end());
       m_scriptableNames.insert(id);
-#ifdef VPX_ENABLE_WIN32_EDITOR
       if (m_tableEditor)
-         m_tableEditor->m_pcv->AddItem(scriptable, false);
-#endif
+         m_tableEditor->OnScriptableAdded(scriptable, false);
    }
 }
 
@@ -379,20 +373,16 @@ void PinTable::RemovePart(IEditable *const part)
    assert(it2 != m_vedit.end());
    assert(part->m_ptable == this);
    m_vedit.erase(it2);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
       m_tableEditor->OnPartRemoved(part);
-#endif
    if (auto scriptable = part->GetIScriptable(); scriptable)
    {
       assert(!scriptable->m_name.empty());
       auto it = m_scriptableNames.find(lowerCase(scriptable->m_name));
       assert(it != m_scriptableNames.end());
       m_scriptableNames.erase(it);
-#ifdef VPX_ENABLE_WIN32_EDITOR
       if (m_tableEditor)
-         m_tableEditor->m_pcv->RemoveItem(scriptable);
-#endif
+         m_tableEditor->OnScriptableRemoved(scriptable);
    }
    part->m_ptable = nullptr;
    part->Release();
@@ -410,10 +400,8 @@ void PinTable::RenamePart(IEditable *const part, const string& newName)
    const auto id = lowerCase(newName);
    assert(m_scriptableNames.find(id) == m_scriptableNames.end());
    m_scriptableNames.insert(id);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
-      m_tableEditor->m_pcv->ReplaceName(scriptable, newName); // Before the rename, as the code view finds the item by its current name
-#endif
+      m_tableEditor->OnScriptableRenamed(scriptable, newName); // Before the rename, as the code view finds the item by its current name
    scriptable->m_name = newName;
 }
 
@@ -431,28 +419,21 @@ void PinTable::MovePartToBack(IEditable* part)
    SetDirtyDraw();
 }
 
-void PinTable::ReorderParts(bool isDrawingOrder)
+void PinTable::ReorderParts(const vector<IEditable *> &orderedParts)
 {
-#ifdef VPX_ENABLE_WIN32_EDITOR // DrawingOrderDialog is its sole caller
-   const vector<IWinUIPart *> &selection = isDrawingOrder ? m_tableEditor->GetMultiSelParts() : m_tableEditor->m_allHitElements;
-   if (!selection.empty())
+   if (!orderedParts.empty())
    {
-      SetNonUndoableDirty(eSaveDirty);
-      for (int i = (int)selection.size() - 1; i >= 0; i--)
-      {
-         IEditable *const pedit = selection[i]->GetEditable();
-         RemoveFromVectorSingle(m_vedit, pedit);
-      }
+      SetNonUndoableDirty(SaveDirtyState::Dirty);
+      for (int i = (int)orderedParts.size() - 1; i >= 0; i--)
+         RemoveFromVectorSingle(m_vedit, orderedParts[i]);
 
-      for (int i = (int)selection.size() - 1; i >= 0; i--)
+      for (int i = (int)orderedParts.size() - 1; i >= 0; i--)
       {
-         IEditable *const pedit = selection[i]->GetEditable();
-         if (FindIndexOf(m_vedit, pedit) != -1)
-            continue; // Already re-added: the selection may contain multiple selects of a part (part and sub parts)
-         m_vedit.push_back(pedit);
+         if (FindIndexOf(m_vedit, orderedParts[i]) != -1)
+            continue; // Already re-added: the list may contain multiple selects of a part (part and sub parts)
+         m_vedit.push_back(orderedParts[i]);
       }
    }
-#endif
 }
 
 void PinTable::AddCollection(CComObject<Collection> *collection)
@@ -462,10 +443,8 @@ void PinTable::AddCollection(CComObject<Collection> *collection)
    collection->AddRef();
    m_vcollection.push_back(collection);
    m_scriptableNames.insert(id);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
-      m_tableEditor->m_pcv->AddItem((IScriptable *)collection, false);
-#endif
+      m_tableEditor->OnScriptableAdded((IScriptable *)collection, false);
 }
 
 void PinTable::RemoveCollection(CComObject<Collection> *collection)
@@ -473,10 +452,8 @@ void PinTable::RemoveCollection(CComObject<Collection> *collection)
    auto it = m_scriptableNames.find(lowerCase(collection->m_name));
    assert(it != m_scriptableNames.end());
    m_scriptableNames.erase(it);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
-      m_tableEditor->m_pcv->RemoveItem((IScriptable *)collection);
-#endif
+      m_tableEditor->OnScriptableRemoved((IScriptable *)collection);
    const int idx = FindIndexOf(m_vcollection, collection);
    assert(idx != -1);
    if (idx != -1)
@@ -495,10 +472,8 @@ void PinTable::RenameCollection(Collection *collection, const string &newName)
    const auto id = lowerCase(newName);
    assert(m_scriptableNames.find(id) == m_scriptableNames.end());
    m_scriptableNames.insert(id);
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
-      m_tableEditor->m_pcv->ReplaceName(collection, newName); // Before the rename, as the code view finds the item by its current name
-#endif
+      m_tableEditor->OnScriptableRenamed(collection, newName); // Before the rename, as the code view finds the item by its current name
    collection->m_name = newName;
 }
 
@@ -534,10 +509,8 @@ string PinTable::GetUniqueName(const string &root) const
 
 void PinTable::SetDirtyDraw()
 {
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (g_pplayer == nullptr && m_tableEditor != nullptr)
       m_tableEditor->Redraw();
-#endif
 }
 
 PinTable* PinTable::CopyForPlay() const
@@ -700,14 +673,11 @@ PinTable* PinTable::CopyForPlay() const
       dst->m_liveToStartup[pcol] = srccol;
    }
 
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (live_table->m_tableEditor)
    {
-      live_table->m_tableEditor->m_pcv->AddItem(live_table, false);
-      live_table->m_tableEditor->m_pcv->AddItem(live_table->m_psgt, true);
-      //live_table->m_tableEditor->m_pcv->AddItem(live_table->m_tableEditor->m_pcv->m_pdm, false);
+      live_table->m_tableEditor->OnScriptableAdded(live_table, false);
+      live_table->m_tableEditor->OnScriptableAdded(live_table->m_psgt, true);
    }
-#endif
 
    live_table->m_vrenderprobe.reserve(m_vrenderprobe.size() + live_table->m_vrenderprobe.size());
    for (size_t i = 0; i < m_vrenderprobe.size(); i++)
@@ -763,15 +733,10 @@ HRESULT PinTable::Save(VPXFileFeedback &feedback)
          ShowError(LocalString(IDS_SAVEERROR).m_szbuffer);
          return hr;
       }
-      SetDirtyScript(eSaveClean); // The Win32 code view does this too, other frontends edit the script directly
-      SetNonUndoableDirty(eSaveClean);
-#ifdef VPX_ENABLE_WIN32_EDITOR
+      SetDirtyScript(SaveDirtyState::Clean); // The Win32 code view does this too, other frontends edit the script directly
+      SetNonUndoableDirty(SaveDirtyState::Clean);
       if (m_tableEditor)
-      {
-         m_tableEditor->SetCleanPoint(eSaveClean);
-         m_tableEditor->m_pcv->SetClean(eSaveClean);
-      }
-#endif
+         m_tableEditor->SetCleanPoint(SaveDirtyState::Clean);
       // Save user custom settings file (if any) along the table file, only once saved (a failed 'Save As' must not leave an orphan settings file)
       m_settings.SetModified(true);
       m_settings.SetIniPath(GetSettingsFileName());
@@ -829,15 +794,10 @@ HRESULT PinTable::Save(VPXFileFeedback &feedback)
 
    if (SUCCEEDED(hr))
    {
-#ifdef VPX_ENABLE_WIN32_EDITOR
       if (m_tableEditor)
-      {
-         m_tableEditor->SetCleanPoint(eSaveClean);
-         m_tableEditor->m_pcv->SetClean(eSaveClean);
-      }
-#endif
-      SetDirtyScript(eSaveClean); // The Win32 code view does this too, other frontends edit the script directly
-      SetNonUndoableDirty(eSaveClean);
+         m_tableEditor->SetCleanPoint(SaveDirtyState::Clean);
+      SetDirtyScript(SaveDirtyState::Clean); // The Win32 code view does this too, other frontends edit the script directly
+      SetNonUndoableDirty(SaveDirtyState::Clean);
 
       // A legacy .vpt table, or a name without the .vpx extension, was saved as .vpx: from now on, the table is this file
       if (vpxPath != m_filename)
@@ -1463,7 +1423,7 @@ HRESULT PinTable::LoadGameFromFilename(const std::filesystem::path &filename, VP
       m_pbTempScreenshot = nullptr;
    }
 
-   SetDirty(eSaveClean);
+   SetDirty(SaveDirtyState::Clean);
 
    m_title = TitleFromFilename(filename);
    // A read only table cannot be saved over, so say so in the title. On Windows this
@@ -1529,18 +1489,15 @@ HRESULT PinTable::LoadGameFromFilename(const std::filesystem::path &filename, VP
    else if (const std::filesystem::path filenameAuto2 = tablePath / "autovpp.vpp"sv; FileExists(filenameAuto2)) // Otherwise, we seek for autovpp settings
       ImportVPP(filenameAuto2);
 
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
    {
-      m_tableEditor->m_pcv->SetScript(m_script_text);
-      m_tableEditor->m_pcv->AddItem(this, false);
-      m_tableEditor->m_pcv->AddItem(m_psgt, true);
-      //m_tableEditor->m_pcv->AddItem(m_pcv->m_pdm, false);
+      m_tableEditor->SetScript(m_script_text);
+      m_tableEditor->OnScriptableAdded(this, false);
+      m_tableEditor->OnScriptableAdded(m_psgt, true);
    }
-#endif
 
    // Loading (including an overriding .vbs) is not a user edit, but filling the code viewer raised the script dirty flag
-   SetDirtyScript(eSaveClean);
+   SetDirtyScript(SaveDirtyState::Clean);
 
    return hr;
 }
@@ -3686,10 +3643,8 @@ void PinTable::LoadScriptOverride(const std::filesystem::path& scriptPath)
    m_script_text = string_from_utf8_or_cp1252(buffer.data() + bom, buffer.size() - bom);
    m_external_script_bom = bom != 0;
    m_external_script_cp1252 = m_script_text.size() != buffer.size() - bom; // Only converted (and so longer) if it was not UTF-8
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor)
-      m_tableEditor->m_pcv->SetScript(m_script_text);
-#endif
+      m_tableEditor->SetScript(m_script_text);
 
    m_external_script_name = scriptPath;
 }
@@ -4735,11 +4690,9 @@ void PinTable::ImportBackdropPOV(const std::filesystem::path &filename, const bo
 
    // update properties UI
    if (!toUserSettings)
-      SetNonUndoableDirty(eSaveDirty);
-#ifdef VPX_ENABLE_WIN32_EDITOR
+      SetNonUndoableDirty(SaveDirtyState::Dirty);
    if (m_tableEditor)
       m_tableEditor->RefreshProperties();
-#endif
 }
 
 // Select file and export the point of view definition
@@ -4766,52 +4719,36 @@ void PinTable::ExportBackdropPOV(const std::filesystem::path &filename) const
 
 void PinTable::SetDirtyScript(SaveDirtyState sds)
 {
+   const SaveDirtyState prevDirtyState = GetDirtyState();
    m_sdsDirtyScript = sds;
-   CheckDirty();
+   CheckDirty(prevDirtyState);
 }
 
 void PinTable::SetDirty(SaveDirtyState sds)
 {
+   const SaveDirtyState prevDirtyState = GetDirtyState();
    m_sdsDirtyProp = sds;
-   CheckDirty();
+   CheckDirty(prevDirtyState);
 }
 
 void PinTable::SetNonUndoableDirty(SaveDirtyState sds)
 {
+   const SaveDirtyState prevDirtyState = GetDirtyState();
    m_sdsNonUndoableDirty = sds;
-   CheckDirty();
+   CheckDirty(prevDirtyState);
 }
 
-void PinTable::CheckDirty()
+SaveDirtyState PinTable::GetDirtyState() const { return (SaveDirtyState)max(max((int)m_sdsDirtyProp, (int)m_sdsDirtyScript), (int)m_sdsNonUndoableDirty); }
+
+void PinTable::CheckDirty(const SaveDirtyState prevDirtyState)
 {
-   const SaveDirtyState sdsNewDirtyState = (SaveDirtyState)max(max((int)m_sdsDirtyProp, (int)m_sdsDirtyScript), (int)m_sdsNonUndoableDirty);
-
-#ifdef VPX_ENABLE_WIN32_EDITOR
-   if (m_tableEditor && sdsNewDirtyState != m_sdsCurrentDirtyState)
-   {
-      if (sdsNewDirtyState > eSaveClean)
-         m_tableEditor->SetCaption(m_title + '*');
-      else
-         m_tableEditor->SetCaption(m_title);
-   }
-#endif
-
-   m_sdsCurrentDirtyState = sdsNewDirtyState;
-}
-
-bool PinTable::FDirty() const
-{
-   return (m_sdsCurrentDirtyState > eSaveClean);
+   const SaveDirtyState dirtyState = GetDirtyState();
+   if (m_tableEditor && dirtyState != prevDirtyState)
+      m_tableEditor->OnDirtyStateChanged(dirtyState);
 }
 
 void PinTable::Uncreate(IEditable *pie)
 {
-#ifdef VPX_ENABLE_WIN32_EDITOR
-   IWinUIPart *const uiPart = m_tableEditor ? m_tableEditor->GetUIPart(pie) : nullptr;
-   if (uiPart && uiPart->m_selectstate != IWinUIPart::SelectState::NotSelected)
-      m_tableEditor->AddMultiSel(uiPart, true, true, false); // Remove the item from the multi-select list
-#endif
-
    // Collections may have been edited since the creation (not undoable): drop the part from them
    const vector<Collection *> collections = pie->m_vCollection;
    for (Collection *const pcollection : collections)
@@ -5893,10 +5830,8 @@ STDMETHODIMP PinTable::put_Width(float newVal)
 {
    SetTableWidth(newVal);
 
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor) // Scripts may set this without the Win32 editor, where there is no view to rescale
-      m_tableEditor->SetMyScrollInfo();
-#endif
+      m_tableEditor->OnTableBoundsChanged();
    return S_OK;
 }
 
@@ -5930,10 +5865,8 @@ STDMETHODIMP PinTable::put_Height(float newVal)
 {
    SetHeight(newVal);
 
-#ifdef VPX_ENABLE_WIN32_EDITOR
    if (m_tableEditor) // Scripts may set this without the Win32 editor, where there is no view to rescale
-      m_tableEditor->SetMyScrollInfo();
-#endif
+      m_tableEditor->OnTableBoundsChanged();
    return S_OK;
 }
 

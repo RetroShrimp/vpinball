@@ -2,10 +2,6 @@
 
 #pragma once
 
-#ifndef __STANDALONE__
-#include <wxx_appcore.h> // Add CWinApp
-#endif
-
 #include "FileLocator.h"
 
 
@@ -38,19 +34,7 @@ public:
 #ifdef VPX_HAS_REGISTERED_TYPELIB
    static CComModule m_module;
 #endif
-#ifndef __STANDALONE__
-   class WinApp final : public CWinApp
-   {
-   public:
-      WinApp() = default;
-#ifdef VPX_ENABLE_WIN32_EDITOR
-   protected:
-      BOOL OnIdle(LONG) override;
-      BOOL PreTranslateMessage(MSG& msg) override;
-#endif
-   } m_winApp;
-   HINSTANCE GetInstanceHandle() const { return m_winApp.GetInstanceHandle(); }
-#endif
+
 
 private:
    std::filesystem::path m_commandLineCustomSettingsFileName; // Override default ini filename, must be defined before InitInstance

@@ -8,13 +8,16 @@
 #include <wxx_stdcontrols.h> // Add CButton, CEdit
 #include <wxx_treeview.h>
 
+class IEditable;
+class PinTableWnd;
+
 class LayerTreeView final : public CTreeView
 {
 public:
    LayerTreeView() = default;
    ~LayerTreeView() override = default;
 
-   void SetActiveTable(PinTable* ptable);
+   void SetActiveTable(PinTableWnd* tableEditor);
    void SetFilter(const string& filter, bool isCaseSensitive);
    void Update();
 
@@ -39,6 +42,7 @@ private:
    CImageList  m_normalImages;
    CImageList  m_stateImages;
    bool        m_dragging = false;
+   PinTableWnd* m_activeTableEditor = nullptr;
    PinTable*   m_activeTable = nullptr;
    vector<HTREEITEM> m_DragItems;
 
@@ -62,7 +66,7 @@ public:
    LayersListDialog();
    ~LayersListDialog() override = default;
 
-   void SetActiveTable(PinTable* ptable);
+   void SetActiveTable(PinTableWnd* tableEditor);
    void Update();
    void AssignToSelectedGroup();
    PartGroup* GetSelectedPartGroup() const;
@@ -93,6 +97,7 @@ private:
    CButton       m_syncButton;
    CEdit         m_layerFilterEditBox;
    CButton       m_layerFilterCaseButton;
+   PinTableWnd* m_activeTableEditor = nullptr;
    PinTable*     m_activeTable = nullptr;
 };
 

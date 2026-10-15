@@ -2,11 +2,21 @@
 
 #pragma once
 
-#include "audio/AudioPlayer.h"
+#include <atomic>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <utility>
+
+#include "math/vector.h"
+#include "unordered_dense.h"
+
 #include "core/ScriptInterpreter.h"
 #include "input/InputManager.h"
-#include "physics/PhysicsEngine.h"
 #include "plugins/ControllerPlugin.h"
+#include "plugins/MsgPluginManager.h"
 #include "plugins/ResURIResolver.h"
 #include "plugins/VPXPlugin.h"
 #include "renderer/typedefs3D.h"
@@ -15,12 +25,24 @@
 #include "utils/wintimer.h"
 #include "VPXPluginAPIImpl.h"
 
-class Renderer;
-class VRDevice;
-class LiveUI;
+class Ball;
 class BaseTexture;
+class Flasher;
+class HitTimer;
 class IEditable;
+class LiveUI;
+class PhysicsEngine;
+class PinTable;
+class Primitive;
+class Renderer;
 class Texture;
+class VRDevice;
+
+namespace VPX
+{
+class AudioPlayer;
+class AudioStreamPlayer;
+}
 
 enum InfoMode
 {
@@ -321,7 +343,7 @@ private:
       AudioSrcId source = { };
       bool overriden = false;
       float mixerVolume = 1.f;
-      ankerl::unordered_dense::map<uint64_t, VPX::AudioPlayer::AudioStreamID> streams;
+      ankerl::unordered_dense::map<uint64_t, std::shared_ptr<VPX::AudioStreamPlayer>> streams;
    };
    ankerl::unordered_dense::map<uint64_t, AudioLane> m_audioLanes;
 #pragma endregion
@@ -348,14 +370,13 @@ private:
 public:
    bool m_showDebugger = false; // Set to request opening the LiveUI debugger window (consumed by the player loop)
 
+   bool m_disablePauseMenu = false; // Pause menu (in-game UI) and debugger opening disabled; mirrors the -DisablePauseMenu command line flag
+
    bool m_debugBalls = false;    // Draw balls in the foreground via 'O' key
 
    bool m_noTimeCorrect = false; // Used so the frame after debugging does not do normal time correction
 
-   // Used to detect script hangs (modal is used by script to tell VPX that it is in a modal state, so disabling watch dog)
-   bool m_detectScriptHang;
-   int m_lastKnownGoodCounter = 0;
-   int m_modalRefCount = 0;
+   bool m_detectScriptHang; // Arm the script interpreter's hang watchdog (a script call that does not return is interrupted)
 
    Primitive *m_implicitPlayfieldMesh = nullptr;
    Flasher *m_implicitVRBackglass = nullptr;

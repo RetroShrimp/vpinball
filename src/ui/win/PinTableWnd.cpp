@@ -20,13 +20,60 @@
 #include "ui/win/PinTableMDI.h"
 #include "ui/win/sur.h"
 #include "ui/win/WinEditor.h"
-#include "ui/win/worker.h"
 #include "ui/win/WinUIPartRegistry.h"
 #include "utils/BiffReader.h"
+#include "utils/fileio.h"
 
 #include "ui/win/dialogs/SearchSelectDialog.h"
 #include "ui/win/dialogs/Win32ProgressBar.h"
 #include "FreeImage.h"
+#include "pole/pole.h"
+
+#include <thread>
+
+// Window message posted back to the table window when a background autosave write completes
+#define DONE_AUTOSAVE (WM_USER + 200)
+
+class AutoSavePackage final
+{
+public:
+   InMemStructuredStorage *pstg;
+   int tableindex;
+   PinTable *table;
+   HWND hwndtable;
+};
+
+// Runs on a background thread: writes the storage serialized by AutoSave() to the autosave file,
+// signals the completion event, and reports the result back to the table window.
+static void CompleteAutoSave(HANDLE hEvent, LPARAM lParam)
+{
+   const AutoSavePackage *const pasp = (AutoSavePackage *)lParam;
+
+   InMemStructuredStorage *const pstgroot = pasp->pstg;
+
+   const std::filesystem::path dir = g_app->m_fileLocator.GetTablePath(pasp->table, FileLocator::TableSubFolder::AutoSave, true);
+   const std::filesystem::path fn = dir.empty() ? dir : dir / std::format("AutoSave{}.vpx", pasp->tableindex);
+
+   HRESULT hr = E_FAIL;
+   if (!fn.empty())
+   {
+      POLE::Storage storage(POLE::PathToFilename(fn).c_str());
+      if (storage.open(true, true, true) && storage.result() == POLE::Storage::Ok)
+      {
+         const bool written = pstgroot->WriteToStorage(storage);
+         storage.close();
+         hr = (written && !storage.hasWriteError()) ? S_OK : E_FAIL;
+      }
+   }
+
+   delete pstgroot;
+
+   SetEvent(hEvent);
+
+   PostMessage(pasp->hwndtable, DONE_AUTOSAVE, (WPARAM)hEvent, hr);
+
+   delete pasp;
+}
 
 
 PinTableWnd::PinTableWnd(WinEditor *vpxEditor, CComObject<PinTable> *table)
@@ -115,7 +162,11 @@ void PinTableWnd::Undo()
    OnPartChanged(m_table);
 }
 
-void PinTableWnd::SetCleanPoint(const SaveDirtyState sds) { m_undo.SetCleanPoint(sds); }
+void PinTableWnd::SetCleanPoint(const SaveDirtyState sds)
+{
+   m_undo.SetCleanPoint(sds);
+   m_pcv->SetClean(sds);
+}
 
 vector<PinTableWnd::UndoSelectionEntry> PinTableWnd::CaptureUndoSelection() const
 {
@@ -288,7 +339,7 @@ void PinTableWnd::ExportBlueprint()
    //need to get a file name
    OPENFILENAME ofn = {};
    ofn.lStructSize = sizeof(OPENFILENAME);
-   ofn.hInstance = g_app->GetInstanceHandle();
+   ofn.hInstance = GetApp()->GetInstanceHandle();
    ofn.hwndOwner = m_vpxEditor->GetHwnd();
    ofn.lpstrFilter = "PNG (.png)\0*.png;\0Bitmap (.bmp)\0*.bmp;\0TGA (.tga)\0*.tga;\0TIFF (.tiff/.tif)\0*.tiff;*.tif;\0WEBP (.webp)\0*.webp;\0";
    char szBlueprintFileName[MAXSTRING];
@@ -430,7 +481,7 @@ void PinTableWnd::ExportBackdropPOV()
 {
    OPENFILENAME ofn = {};
    ofn.lStructSize = sizeof(OPENFILENAME);
-   ofn.hInstance = g_app->GetInstanceHandle();
+   ofn.hInstance = GetApp()->GetInstanceHandle();
    ofn.hwndOwner = m_vpxEditor->GetHwnd();
    // TEXT
    ofn.lpstrFilter = "INI file(*.ini)\0*.ini\0";
@@ -493,7 +544,7 @@ void PinTableWnd::ExportPhysics()
 
    OPENFILENAME ofn = {};
    ofn.lStructSize = sizeof(OPENFILENAME);
-   ofn.hInstance = g_app->GetInstanceHandle();
+   ofn.hInstance = GetApp()->GetInstanceHandle();
    ofn.hwndOwner = m_vpxEditor->GetHwnd();
    // TEXT
    ofn.lpstrFilter = "Visual Pinball Physics (*.vpp)\0*.vpp\0";
@@ -886,7 +937,7 @@ LRESULT PinTableWnd::WndProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void PinTableWnd::SetMouseCursor()
 {
-   HINSTANCE hinst = g_app->GetInstanceHandle();
+   HINSTANCE hinst = GetApp()->GetInstanceHandle();
    static int oldTool = -1;
 
    if (oldTool != m_vpxEditor->m_ToolCur)
@@ -2159,7 +2210,7 @@ void PinTableWnd::EndAutoSaveCounter()
 
 void PinTableWnd::AutoSave()
 {
-   if (m_table->m_sdsCurrentDirtyState <= eSaveAutosaved)
+   if (m_table->GetDirtyState() <= SaveDirtyState::Autosaved)
       return;
 
    m_vpxEditor->KillTimer(WinEditor::TIMER_ID_AUTOSAVE);
@@ -2169,12 +2220,14 @@ void PinTableWnd::AutoSave()
 
    InMemStructuredStorage *const pstgroot = new InMemStructuredStorage();
 
-   Win32ProgressBar feedback(g_app->GetInstanceHandle(), m_vpxEditor->m_hwndStatusBar);
+   Win32ProgressBar feedback(GetApp()->GetInstanceHandle(), m_vpxEditor->m_hwndStatusBar);
    const HRESULT hr = m_table->SaveToStorage(pstgroot, feedback);
 
-   SetCleanPoint((SaveDirtyState)min((int)m_table->m_sdsDirtyProp, (int)eSaveAutosaved));
-   m_pcv->SetClean((SaveDirtyState)min((int)m_table->m_sdsDirtyScript, (int)eSaveAutosaved));
-   m_table->SetNonUndoableDirty((SaveDirtyState)min((int)m_table->m_sdsNonUndoableDirty, (int)eSaveAutosaved));
+   // Autosave is not a real save: each dirty domain is only downgraded to Autosaved, so bypass SetCleanPoint
+   // (which would feed the prop domain's level into the script save state)
+   m_undo.SetCleanPoint((SaveDirtyState)min((int)m_table->GetPropDirtyState(), (int)SaveDirtyState::Autosaved));
+   m_pcv->SetClean((SaveDirtyState)min((int)m_table->GetScriptDirtyState(), (int)SaveDirtyState::Autosaved));
+   m_table->SetNonUndoableDirty((SaveDirtyState)min((int)m_table->GetNonUndoableDirtyState(), (int)SaveDirtyState::Autosaved));
 
    AutoSavePackage *const pasp = new AutoSavePackage();
    pasp->pstg = pstgroot;
@@ -2184,7 +2237,8 @@ void PinTableWnd::AutoSave()
 
    if (hr == S_OK)
    {
-      const HANDLE hEvent = m_vpxEditor->PostWorkToWorkerThread(COMPLETE_AUTOSAVE, (LPARAM)pasp);
+      const HANDLE hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+      std::thread(CompleteAutoSave, hEvent, (LPARAM)pasp).detach();
       m_vAsyncHandles.push_back(hEvent);
 
       m_vpxEditor->SetActionCur("Completing AutoSave"s);
@@ -2231,6 +2285,27 @@ void PinTableWnd::OnPartRemoved(IEditable *part)
       ClearMultiSel();
    m_uiParts.erase(part);
 }
+
+void PinTableWnd::SetScript(const string &script) { m_pcv->SetScript(script); }
+
+void PinTableWnd::OnScriptableAdded(IScriptable *scriptable, const bool global) { m_pcv->AddItem(scriptable, global); }
+
+void PinTableWnd::OnScriptableRemoved(IScriptable *scriptable) { m_pcv->RemoveItem(scriptable); }
+
+void PinTableWnd::OnScriptableRenamed(IScriptable *scriptable, const string &newName) { m_pcv->ReplaceName(scriptable, newName); }
+
+void PinTableWnd::OnDirtyStateChanged(const SaveDirtyState sds) { SetCaption(sds > SaveDirtyState::Clean ? m_table->m_title + '*' : m_table->m_title); }
+
+void PinTableWnd::OnTableBoundsChanged() { SetMyScrollInfo(); }
+
+void PinTableWnd::OnScriptError(ScriptInterpreter::ErrorType type, int line, int column, const string &description, const vector<string> &stackDump)
+{
+   m_pcv->OnScriptError(type, line, column, description, stackDump);
+}
+
+bool PinTableWnd::IsScriptEditorVisible() const { return m_pcv->m_visible && !m_pcv->m_minimized; }
+
+void PinTableWnd::SetScriptEditorVisible(const bool visible) { m_pcv->SetVisible(visible); }
 
 IWinUIPart *PinTableWnd::GetUIPart(IEditable *part)
 {

@@ -252,6 +252,8 @@ set(VPX_SOURCES
    src/renderer/Sampler.h
    src/renderer/Shader.cpp
    src/renderer/Shader.h
+   src/renderer/TextRenderer.cpp
+   src/renderer/TextRenderer.h
    src/renderer/Texture.cpp
    src/renderer/Texture.h
    src/renderer/TextureCompressor.cpp
@@ -535,12 +537,15 @@ set(VPX_WINDOWS_SOURCES
    src/ui/win/PinTableWnd.h
    src/ui/win/WinEditor.cpp
    src/ui/win/WinEditor.h
+   src/ui/win/WinApp.cpp
+   src/ui/win/WinApp.h
+   src/ui/win/Win32DialogSink.cpp
+   src/ui/win/Win32DialogSink.h
+   src/ui/win/ResourceStrings.cpp
    src/ui/win/WinUIPartRegistry.cpp
    src/ui/win/WinUIPartRegistry.h
    src/ui/win/paintsur.cpp
    src/ui/win/paintsur.h
-   src/ui/win/worker.cpp
-   src/ui/win/worker.h
    src/ui/win/resource.h
    src/ui/win/vpinball.rc
 

@@ -9,6 +9,7 @@
 #include <array>
 #include <filesystem>
 
+#include "audio/AudioPlayer.h"
 #include "core/editablereg.h"
 #include "core/VPApp.h"
 #include "core/VPXPluginAPIImpl.h"
@@ -16,7 +17,11 @@
 #include "parts/flasher.h"
 #include "parts/light.h"
 #include "parts/primitive.h"
+#include "parts/Sound.h"
 #include "physics/cabinet/NudgeHandler.h"
+#include "physics/hittimer.h"
+#include "physics/PhysicsEngine.h"
+#include "plugins/ControllerPlugin.h"
 #include "plugins/MsgPlugin.h"
 #include "plugins/VPXPlugin.h"
 #include "renderer/Renderer.h"
@@ -29,12 +34,6 @@
 #include "ui/live/ingameui/HomePage.h"
 #include "ThreadPool.h"
 #include "tinyxml2/tinyxml2.h"
-#ifdef VPX_ENABLE_WIN32_EDITOR
-#include "ui/win/codeview.h"
-#include "ui/win/PinTableWnd.h"
-#include "ui/win/WinEditor.h"
-#include "ui/win/worker.h"
-#endif
 #include "unordered_dense.h"
 #include "utils/denormals.h"
 #include "utils/ushock_output.h"
@@ -579,8 +578,6 @@ void Player::InitTableSession(const bool isInitial)
    m_time_sec = 0.0;
    m_time_msec = 0;
    m_last_frame_time_msec = 0;
-   m_lastKnownGoodCounter = 0;
-   m_modalRefCount = 0;
    m_nScriptErrorNotification = 0;
    m_pauseMusicRefCount = 0;
 
@@ -943,10 +940,8 @@ void Player::InitTableSession(const bool isInitial)
       }
       m_ptable->FireOptionEvent(PinTable::OptionEventType::Initialized);
 
-#ifdef VPX_ENABLE_WIN32_EDITOR
-      if (m_detectScriptHang && g_pvp)
-         g_pvp->PostWorkToWorkerThread(HANG_SNOOP_START, NULL);
-#endif
+      if (m_detectScriptHang)
+         m_scriptInterpreter->StartHangWatch([this]() { return IsPlaying(false); });
    }
 
    // Suspend play if started
@@ -993,10 +988,6 @@ void Player::ShutdownTableSession()
    if (!IsEditorMode())
    {
       m_ptable->FireVoidEvent(DISPID_GameEvents_Exit);
-#ifdef VPX_ENABLE_WIN32_EDITOR
-      if (m_detectScriptHang && g_pvp)
-         g_pvp->PostWorkToWorkerThread(HANG_SNOOP_STOP, NULL);
-#endif
    }
 
    if (m_scriptInterpreter)
@@ -1354,8 +1345,6 @@ Player::~Player()
 {
    assert(g_pplayer == this && g_pplayer->m_closing != CS_CLOSED);
 
-   // note if application exit was requested, and set the new closing state to CLOSED
-   const bool appExitRequested = (m_closing == CS_CLOSE_APP);
    m_closing = CS_CLOSED;
    PLOGI << "Closing player...";
 
@@ -1420,12 +1409,6 @@ Player::~Player()
    m_controlclsidsafe.clear();
 
    m_changed_vht.clear();
-
-#ifdef VPX_ENABLE_WIN32_EDITOR
-   // Close application if requested
-   if (appExitRequested && g_pvp)
-      g_pvp->PostMessage(WM_CLOSE, 0, 0);
-#endif
 
    #ifdef ENABLE_XR
    if (m_vrDevice)
@@ -1556,7 +1539,6 @@ void Player::SetPlayState(const bool isPlaying, const uint32_t delayBeforePauseM
       {
          if (m_trackTableSessionStats)
             m_tableSessionStartTime = usec();
-         m_lastKnownGoodCounter++; // Reset hang script detection
          m_noTimeCorrect = true; // Disable physics engine time correction on next physic update
          UnpauseMusic();
          PLOGI << "Unpausing Game";
@@ -1592,12 +1574,11 @@ void Player::OnScriptError(ScriptInterpreter::ErrorType type, int line, int colu
       m_nScriptErrorNotification++;
    }
 
-#ifdef VPX_ENABLE_WIN32_EDITOR // report to the script editor
+   // Report to the script editor, if any
    if (m_ptable->m_tableEditor)
-      m_ptable->m_tableEditor->m_pcv->OnScriptError(type, line ,column, description, stackDump);
+      m_ptable->m_tableEditor->OnScriptError(type, line, column, description, stackDump);
    else if (m_ptable->m_liveBaseTable && m_ptable->m_liveBaseTable->m_tableEditor)
-      m_ptable->m_liveBaseTable->m_tableEditor->m_pcv->OnScriptError(type, line, column, description, stackDump);
-#endif
+      m_ptable->m_liveBaseTable->m_tableEditor->OnScriptError(type, line, column, description, stackDump);
 }
 
 Ball *Player::CreateBall(const float x, const float y, const float z, const float vx, const float vy, const float vz, const float radius, const float mass)
@@ -2480,7 +2461,6 @@ void Player::PrepareFrame()
    m_logicProfiler.EnterProfileSection(FrameProfiler::PROFILE_PREPARE_FRAME);
 
    m_overall_frames++; // This causes the next VPinMAME <-> VPX sync to update light status which can be heavy since it needs to perform PWM integration of all lights
-   m_lastKnownGoodCounter++;
    m_startFrameTick = usec();
 
    m_pluginAPI.BroadcastVPXMsg(m_onPrepareFrameMsgId, nullptr);
@@ -2590,11 +2570,9 @@ void Player::FinishFrame()
    // Close requested with user input
    if (m_closing == CS_USER_INPUT)
    {
-#ifdef VPX_ENABLE_WIN32_EDITOR
-      if (g_pvp && g_pvp->m_disable_pause_menu)
+      if (m_disablePauseMenu)
          SetCloseState(CS_STOP_PLAY);
       else
-#endif
       {
          m_closing = CS_PLAYING;
          m_liveUI->OpenInGameUI();
@@ -2606,11 +2584,7 @@ void Player::FinishFrame()
       exit(-9999);
 
    // Open debugger window (LiveUI, cross-platform)
-   if (m_showDebugger && !m_ptable->IsLocked()
-#ifdef VPX_ENABLE_WIN32_EDITOR
-      && (!g_pvp || !g_pvp->m_disable_pause_menu)
-#endif
-   )
+   if (m_showDebugger && !m_ptable->IsLocked() && !m_disablePauseMenu)
    {
       m_showDebugger = false;
       m_liveUI->m_debuggerUI.Open();
