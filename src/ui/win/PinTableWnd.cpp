@@ -19,6 +19,7 @@
 #include "ui/win/paintsur.h"
 #include "ui/win/PinTableMDI.h"
 #include "ui/win/sur.h"
+#include "ui/win/TextureGDI.h"
 #include "ui/win/WinEditor.h"
 #include "ui/win/WinUIPartRegistry.h"
 #include "utils/BiffReader.h"
@@ -110,6 +111,7 @@ PinTableWnd::~PinTableWnd()
    m_vpxEditor->ReleasePropSel(m_vmultisel);
    m_uiParts.clear();
    m_table->m_tableEditor = nullptr;
+   m_fontRegistrar.UnregisterAll(); // fonts are deleted with the table below
    m_table->Release();
    if (m_hbmOffScreen)
       DeleteObject(m_hbmOffScreen);
@@ -603,11 +605,11 @@ void PinTableWnd::RenderTable(Sur *const psur)
    {
       Texture *const ppi = m_table->GetImage((!m_vpxEditor->m_desktopBackdropView) ? m_table->m_image : m_table->m_BG_image[m_table->GetViewMode()]);
 
-      if (ppi && ppi->GetGDIBitmap())
+      if (ppi && m_gdiTextureCache.Get(*ppi))
       {
          CDC dc;
          dc.CreateCompatibleDC(nullptr);
-         const CBitmap hbmOld = dc.SelectObject(ppi->GetGDIBitmap());
+         const CBitmap hbmOld = dc.SelectObject(m_gdiTextureCache.Get(*ppi));
 
          psur->Image(frect.left, frect.top, frect.right, frect.bottom, dc.GetHDC(), ppi->m_width, ppi->m_height);
 
@@ -2045,7 +2047,6 @@ void PinTableWnd::ImportFont(HWND hwndListView, const string &filename)
       m_table->AddFont(ppb);
       const int index = AddListBinary(hwndListView, ppb);
       ListView_SetItemState(hwndListView, index, LVIS_SELECTED, LVIS_SELECTED);
-      ppb->Register();
    }
    else
       delete ppb;
@@ -2285,6 +2286,10 @@ void PinTableWnd::OnPartRemoved(IEditable *part)
       ClearMultiSel();
    m_uiParts.erase(part);
 }
+
+void PinTableWnd::OnFontAdded(PinFont *font) { m_fontRegistrar.Register(font); }
+
+void PinTableWnd::OnFontRemoved(PinFont *font) { m_fontRegistrar.Unregister(font); }
 
 void PinTableWnd::SetScript(const string &script) { m_pcv->SetScript(script); }
 

@@ -531,10 +531,14 @@ set(VPX_WINDOWS_SOURCES
    src/ui/win/sur.h
    src/ui/win/IWinUIPart.cpp
    src/ui/win/IWinUIPart.h
+   src/ui/win/PinFontRegistrar.cpp
+   src/ui/win/PinFontRegistrar.h
    src/ui/win/PinTableMDI.cpp
    src/ui/win/PinTableMDI.h
    src/ui/win/PinTableWnd.cpp
    src/ui/win/PinTableWnd.h
+   src/ui/win/TextureGDI.cpp
+   src/ui/win/TextureGDI.h
    src/ui/win/WinEditor.cpp
    src/ui/win/WinEditor.h
    src/ui/win/WinApp.cpp

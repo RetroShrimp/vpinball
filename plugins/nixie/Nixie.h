@@ -9,7 +9,8 @@
 #include <filesystem>
 #include <unordered_dense.h>
 
-namespace ScoreView {
+namespace Nixie
+{
 
 LPI_USE_CPP();
 #ifndef LOGD
@@ -23,7 +24,11 @@ class ivec2 final
 {
 public:
    constexpr ivec2() { }
-   constexpr ivec2(const int _x, const int _y) : x(_x), y(_y) { }
+   constexpr ivec2(const int _x, const int _y)
+      : x(_x)
+      , y(_y)
+   {
+   }
 
    int x, y;
 };
@@ -57,11 +62,11 @@ public:
    float x, y, z, w;
 };
 
-class ScoreView final
+class Nixie final
 {
 public:
-   ScoreView(const MsgPluginAPI* api, unsigned int endpointId, VPXPluginAPI* vpxApi);
-   ~ScoreView();
+   Nixie(const MsgPluginAPI* api, unsigned int endpointId, VPXPluginAPI* vpxApi);
+   ~Nixie();
 
    bool HasLayouts() const { return !m_layouts.empty(); }
    bool IsMatched() const { return m_bestLayout != nullptr && m_bestLayout->unmatchedVisuals == 0; }
@@ -72,19 +77,22 @@ public:
 
 private:
    void Parse(const std::filesystem::path& path);
-   void Select(const float scoreW, const float scoreH);
+   void Select(const VPXWindowId window, const float scoreW, const float scoreH);
 
    enum Fit
    {
-      Fill,       // Stretch to fill container
-      Contain,    // Stretch to fit inside container, keeping aspect ratio, eventually causing black bars
-      Cover,      // Stretch to cover container, keeping aspect ratio, eventually cropping
-      None,       // No stretching, content is placed at center
-      ScaleDown   // Same as 'None' unless the content overflow the container, in which situation 'Contain' is applied
+      Fill, // Stretch to fill container
+      Contain, // Stretch to fit inside container, keeping aspect ratio, eventually causing black bars
+      Cover, // Stretch to cover container, keeping aspect ratio, eventually cropping
+      None, // No stretching, content is placed at center
+      ScaleDown // Same as 'None' unless the content overflow the container, in which situation 'Contain' is applied
    };
    enum VisualType
    {
-      DMD, Screen, SegDisplay, Image
+      DMD,
+      Screen,
+      SegDisplay,
+      Image
    };
    struct Visual
    {
@@ -119,6 +127,7 @@ private:
    struct Layout
    {
       std::filesystem::path path;
+      VPXWindowId window;
       float width, height;
       Fit fit;
       vector<Visual> visuals;

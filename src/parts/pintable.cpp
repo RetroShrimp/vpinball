@@ -3,6 +3,10 @@
 #include "core/stdafx.h"
 #include "pintable.h"
 
+#ifdef VPX_HAS_CRYPTOAPI
+#include <wincrypt.h> // legacy VP8/VP9 script decryption
+#endif
+
 #include "audio/AudioPlayer.h"
 #include "core/editablereg.h"
 #include "core/resourceid.h"
@@ -127,10 +131,7 @@ PinTable::~PinTable()
          delete m_vimage[i];
 
       for (size_t i = 0; i < m_vfont.size(); i++)
-      {
-         m_vfont[i]->UnRegister();
          delete m_vfont[i];
-      }
    }
 
    for (size_t i = 0; i < m_vliveimage.size(); i++)
@@ -2017,10 +2018,8 @@ void PinTable::FinalizeLoadedParts(vector<IEditable *> &parts)
             m_vfont.erase(m_vfont.begin() + i);
             --i;
          }
-         else
-         {
-            font->Register();
-         }
+         else if (m_tableEditor)
+            m_tableEditor->OnFontAdded(font);
       }
 
    PLOGI << "Images, Sounds, Fonts and Parts loaded"; // For profiling
@@ -4046,13 +4045,19 @@ void PinTable::RemoveSound(VPX::Sound *const pps)
    delete pps;
 }
 
-void PinTable::AddFont(PinFont *const ppf) { m_vfont.push_back(ppf); }
+void PinTable::AddFont(PinFont *const ppf)
+{
+   m_vfont.push_back(ppf);
+   if (m_tableEditor)
+      m_tableEditor->OnFontAdded(ppf);
+}
 
 void PinTable::RemoveFont(PinFont * const ppf)
 {
    RemoveFromVectorSingle(m_vfont, ppf);
 
-   ppf->UnRegister();
+   if (m_tableEditor)
+      m_tableEditor->OnFontRemoved(ppf);
    delete ppf;
 }
 
@@ -5275,6 +5280,19 @@ string PinTable::AuditTable(bool log) const
       //if (type == eItemSurface && surf->m_d.m_disableLightingBelow != 1.f && surf->StaticRendering())
       //   ss << ". Warning: Wall '" << surf->GetName() << "' has translucency enabled but will be statically rendered (not droppable with opaque materials). Translucency will not be applied on desktop, and it will look different between VR/headtracked and desktop.\r\n";
    }
+
+   // The flasher VideoCap API (capturing the window of an external application) is deprecated in favor of plugins and may be removed in a future version
+   bool usesVideoCap = false;
+   for (const auto part : m_vedit)
+      if (part->GetItemType() == eItemFlasher && StrFindNoCase(m_script_text, string(part->GetName()) + ".videocap"s) != string::npos)
+      {
+         ss << ". Error: Flasher '" << part->GetName()
+            << "' uses the deprecated 'VideoCap' API (VideoCapWidth/VideoCapHeight/VideoCapUpdate). It is superseded by plugins and may be removed in a future version.\r\n";
+         usesVideoCap = true;
+      }
+   if (!usesVideoCap && (FindIndexOf(identifiers, "videocapwidth"s) != -1 || FindIndexOf(identifiers, "videocapheight"s) != -1 || FindIndexOf(identifiers, "videocapupdate"s) != -1))
+      ss << ". Error: script uses the deprecated Flasher 'VideoCap' API (VideoCapWidth/VideoCapHeight/VideoCapUpdate). It is superseded by plugins and may be removed in a future "
+            "version.\r\n";
 
    if ((FindIndexOf(identifiers, "loadvpm"s) != -1) || (FindIndexOf(identifiers, "loadvpmalt"s) != -1))
    {

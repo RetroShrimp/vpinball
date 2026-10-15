@@ -970,6 +970,7 @@
     <ClCompile Include="$(SolutionDir)/../../src/ui/live/ingameui/TableRulesPage.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/live/ingameui/VRSettingsPage.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/live/ingameui/SystemInfoPage.cpp" />
+    <ClCompile Include="$(SolutionDir)/../../src/ui/win/PinFontRegistrar.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/PinTableMDI.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/PinTableWnd.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/DragPointDialogs.cpp" />
@@ -979,6 +980,7 @@
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/ResourceStrings.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/WinUIPartRegistry.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/IWinUIPart.cpp" />
+    <ClCompile Include="$(SolutionDir)/../../src/ui/win/TextureGDI.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/parts/BallWinUIPart.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/parts/BumperWinUIPart.cpp" />
     <ClCompile Include="$(SolutionDir)/../../src/ui/win/parts/DecalWinUIPart.cpp" />
@@ -1920,6 +1922,7 @@
     <ClInclude Include="$(SolutionDir)/../../src/ui/live/ingameui/TableRulesPage.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/live/ingameui/VRSettingsPage.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/live/ingameui/SystemInfoPage.h" />
+    <ClInclude Include="$(SolutionDir)/../../src/ui/win/PinFontRegistrar.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/PinTableMDI.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/PinTableWnd.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/DragPointDialogs.h" />
@@ -1928,6 +1931,7 @@
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/WinApp.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/Win32DialogSink.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/WinUIPartRegistry.h" />
+    <ClInclude Include="$(SolutionDir)/../../src/ui/win/TextureGDI.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/parts/BallWinUIPart.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/parts/BumperWinUIPart.h" />
     <ClInclude Include="$(SolutionDir)/../../src/ui/win/parts/DecalWinUIPart.h" />
