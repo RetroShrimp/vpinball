@@ -897,12 +897,13 @@ BOOL CodeViewer::PreTranslateMessage(MSG &msg)
    if (!IsWindow())
       return FALSE;
 
+   // The Find/Replace dialog has no menu, so it also gets the Alt combinations for its mnemonics (IsDialogMessage ignores messages for other windows)
+   if (m_findReplace.IsWindow() && m_findReplace.IsDialogMessage(msg))
+      return TRUE;
+
    // The Alt combinations are what opens the menu, so they must not be given to IsDialogMessage
    if (IsAltKeyMessage(msg.message))
       return FALSE;
-
-   if (m_findReplace.IsWindow() && m_findReplace.IsDialogMessage(msg))
-      return TRUE;
 
    if (IsDialogMessage(msg))
       return TRUE;
@@ -923,19 +924,6 @@ void CodeViewer::Compile(const bool message)
       MessageBox("Compilation successful", "Compile", MB_OK);
    interpreter->Stop(m_tableEditor->m_table);
    interpreter->Release();
-}
-
-void CodeViewer::AddToDebugOutput(const string &szText)
-{
-   if (g_pplayer)
-   {
-      ::SendMessage(g_pplayer->m_hwndDebugOutput, SCI_ADDTEXT, szText.length(), (LPARAM)szText.c_str());
-      ::SendMessage(g_pplayer->m_hwndDebugOutput, SCI_ADDTEXT, 1, (LPARAM) "\n");
-
-      const size_t pos = ::SendMessage(g_pplayer->m_hwndDebugOutput, SCI_GETCURRENTPOS, 0, 0);
-      const size_t line = ::SendMessage(g_pplayer->m_hwndDebugOutput, SCI_LINEFROMPOSITION, pos, 0);
-      ::SendMessage(g_pplayer->m_hwndDebugOutput, SCI_ENSUREVISIBLEENFORCEPOLICY, line, 0);
-   }
 }
 
 void CodeViewer::ShowFindDialog()

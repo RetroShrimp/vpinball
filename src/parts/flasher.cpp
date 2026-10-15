@@ -725,7 +725,7 @@ void Flasher::ResetVideoCap()
 // if PASSED a blank title then we treat this as STOP capture and free resources.
 STDMETHODIMP Flasher::put_VideoCapUpdate(BSTR cWinTitle)
 {
-#ifndef __STANDALONE__
+#ifdef VPX_HAS_WIN32_SDK
     if (m_videoCapWidth == 0 || m_videoCapHeight == 0) return S_FALSE; //safety.  VideoCapWidth/Height needs to be set prior to this call
 
     // if PASS blank title then we treat as STOP capture and free resources.  Should be called on table1_exit
@@ -1068,7 +1068,7 @@ void Flasher::Render(const unsigned int renderMask)
    m_renderer->m_renderDevice->SetRenderState(RenderState::CULLMODE, RenderState::CULL_NONE);
 
    const vec4 color = convertColor(m_d.m_color, alpha * m_d.m_intensity_scale / 100.0f);
-   const float clampedModulateVsAdd = min(max(m_d.m_modulate_vs_add, 0.00001f), 0.9999f); // avoid 0, as it disables the blend and avoid 1 as it looks not good with day->night changes
+   const float clampedModulateVsAdd = min(max(m_d.m_modulate_vs_add, 0.0001f), 0.9999f); // avoid 0, as it disables the blend and avoid 1 as it looks not good with day->night changes
 
    // Signed 'modulate vs add' factor the shaders encode their output with: negative absorbs the background instead of amplifying it, 0 asks for a plain opaque output (see fs_flasher.sc / fs_display.sc)
    const float signedModulateVsAdd = m_d.m_addBlend == FlasherData::AB_ABSORB ? -clampedModulateVsAdd : clampedModulateVsAdd;
