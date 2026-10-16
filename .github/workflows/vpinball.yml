@@ -152,6 +152,14 @@ jobs:
           name: VPinballX-${{ needs.version.outputs.tag }}-dev-third-party-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
           path: VPinballX-${{ needs.version.outputs.tag }}-dev-third-party-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}.zip
           archive: false
+      - name: Setup build tools
+        run: |
+          FXC=$(find "/c/Program Files (x86)/Windows Kits/10/bin" -type f -iname fxc.exe 2>/dev/null | sort -rV | head -n1)
+          if [[ -z "$FXC" ]]; then
+            echo "::error::fxc.exe not found in any installed Windows SDK"
+            exit 1
+          fi
+          cygpath -w "$(dirname "$FXC")" >> "$GITHUB_PATH"
       - name: Set version
         run: |
           perl -i -pe"s/9999/${{ needs.version.outputs.revision }}/g" src/core/git_version.h
@@ -274,6 +282,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: VPinballX_${{ matrix.type }}-${{ needs.version.outputs.tag }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
+          name: VPinballX_${{ matrix.type }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.config }}
           path: tmp/*
           archive: false
