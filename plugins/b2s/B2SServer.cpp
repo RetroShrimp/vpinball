@@ -9,26 +9,35 @@
 #include <iterator>
 #include <random>
 
+#include <cstddef> // for size_t, ptrdiff_t
+// Define ssize_t for Windows
+#if defined(_WIN32) && !defined(__SSIZE_T_DEFINED)
+#if defined(_WIN64)
+typedef __int64 ssize_t;
+#else
+typedef int ssize_t;
+#endif
+#define __SSIZE_T_DEFINED
+#endif
+
+#include "base64.h"
+#include "tinyxml2/tinyxml2.h"
 #include "plugins/PluginStrings.h"
 
 namespace B2S
 {
 
 
-MSGPI_INT_VAL_SETTING(allAnimationSlowDownProp, "AllAnimationSlowDown", "Global animation slowdown", "Slowdown factor applied to all backglass animations", true, 1, 100, 1);
-MSGPI_STRING_VAL_SETTING(animationSlowDownsProp, "AnimationSlowDowns", "Per-animation slowdowns", "Semicolon separated 'name=factor' animation slowdown overrides", true, "", 1024);
 static const char* usedLEDTypeValues[] = { "Auto", "Rendered", "Dream7" };
 MSGPI_ENUM_VAL_SETTING(usedLEDTypeProp, "UsedLEDType", "Used LED type", "Force the LED display type (Auto = as declared by the .directb2s file)", true, 0, 3, usedLEDTypeValues, 0);
-MSGPI_BOOL_VAL_SETTING(hideB2SDMDProp, "HideB2SDMD", "Hide B2S DMD", "Hide the score view window", true, false);
-MSGPI_BOOL_VAL_SETTING(hideDMDProp, "HideDMD", "Hide DMD", "Hide the DMD overlays", true, false);
+MSGPI_INT_VAL_SETTING(allAnimationSlowDownProp, "AllAnimationSlowDown", "Global animation slowdown", "Slowdown factor applied to all backglass animations", true, 1, 100, 1);
+MSGPI_STRING_VAL_SETTING(animationSlowDownsProp, "AnimationSlowDowns", "Per-animation slowdowns", "Semicolon separated 'name=factor' animation slowdown overrides", true, "", 1024);
 
 void B2SServer::RegisterSettings(const MsgPluginAPI* const msgApi, unsigned int endpointId)
 {
+   msgApi->RegisterSetting(endpointId, &usedLEDTypeProp);
    msgApi->RegisterSetting(endpointId, &allAnimationSlowDownProp);
    msgApi->RegisterSetting(endpointId, &animationSlowDownsProp);
-   msgApi->RegisterSetting(endpointId, &usedLEDTypeProp);
-   msgApi->RegisterSetting(endpointId, &hideB2SDMDProp);
-   msgApi->RegisterSetting(endpointId, &hideDMDProp);
 }
 
 namespace
@@ -44,10 +53,6 @@ namespace
    void MSGPIAPI SlowdownsSet(void*, const char* v) { animationSlowDownsProp_Set(v); }
    int MSGPIAPI LedTypeGet(void*) { return usedLEDTypeProp_Get(); }
    void MSGPIAPI LedTypeSet(void*, int v) { usedLEDTypeProp_Set(v); }
-   int MSGPIAPI HideB2SDMDGet(void*) { return hideB2SDMDProp_Get(); }
-   void MSGPIAPI HideB2SDMDSet(void*, int v) { hideB2SDMDProp_Set(v); }
-   int MSGPIAPI HideDMDGet(void*) { return hideDMDProp_Get(); }
-   void MSGPIAPI HideDMDSet(void*, int v) { hideDMDProp_Set(v); }
 
    void FillHeader(PagedUIItemDef& item, const char* label)
    {
@@ -65,7 +70,7 @@ namespace
       info->info = nullptr;
    }
 
-   unsigned int MSGPIAPI SettingsItemCount(void*, const char*) { return 9; }
+   unsigned int MSGPIAPI SettingsItemCount(void*, const char*) { return 7; }
 
    void MSGPIAPI SettingsGetItems(void*, const char*, PagedUIItemDef* items)
    {
@@ -79,34 +84,114 @@ namespace
       items[3].storage = PAGEDUI_STORAGE_HOST;
       items[3].enumProp = { 0, 3, usedLEDTypeValues, 0, &LedTypeGet, &LedTypeSet };
       items[4] = {};
-      items[4].type = PAGEDUI_ITEM_BOOL;
-      items[4].id = "HideB2SDMD";
-      items[4].label = "Hide B2S DMD";
-      items[4].tooltip = "Hide the score view window";
+      items[4].type = PAGEDUI_ITEM_INT;
+      items[4].id = "AllAnimationSlowDown";
+      items[4].label = "Global animation slowdown";
+      items[4].tooltip = "Slowdown factor applied to all backglass animations";
       items[4].storage = PAGEDUI_STORAGE_HOST;
-      items[4].boolProp = { 0, &HideB2SDMDGet, &HideB2SDMDSet };
+      items[4].intProp = { 1, 100, 1, nullptr, &AllSlowdownGet, &AllSlowdownSet };
       items[5] = {};
-      items[5].type = PAGEDUI_ITEM_BOOL;
-      items[5].id = "HideDMD";
-      items[5].label = "Hide DMD";
-      items[5].tooltip = "Hide the DMD overlays";
+      items[5].type = PAGEDUI_ITEM_STRING;
+      items[5].id = "AnimationSlowDowns";
+      items[5].label = "Per-animation slowdowns";
+      items[5].tooltip = "Semicolon separated 'name=factor' animation slowdown overrides";
       items[5].storage = PAGEDUI_STORAGE_HOST;
-      items[5].boolProp = { 0, &HideDMDGet, &HideDMDSet };
-      items[6] = {};
-      items[6].type = PAGEDUI_ITEM_INT;
-      items[6].id = "AllAnimationSlowDown";
-      items[6].label = "Global animation slowdown";
-      items[6].tooltip = "Slowdown factor applied to all backglass animations";
-      items[6].storage = PAGEDUI_STORAGE_HOST;
-      items[6].intProp = { 1, 100, 1, nullptr, &AllSlowdownGet, &AllSlowdownSet };
-      items[7] = {};
-      items[7].type = PAGEDUI_ITEM_STRING;
-      items[7].id = "AnimationSlowDowns";
-      items[7].label = "Per-animation slowdowns";
-      items[7].tooltip = "Semicolon separated 'name=factor' animation slowdown overrides";
-      items[7].storage = PAGEDUI_STORAGE_HOST;
-      items[7].stringProp = { "", &SlowdownsGet, &SlowdownsSet };
-      FillHeader(items[8], "Modify Backglass");
+      items[5].stringProp = { "", &SlowdownsGet, &SlowdownsSet };
+      FillHeader(items[6], "Modify Backglass");
+   }
+
+   // Rewrites only the <DMD> children of the document's <Displays> element, leaving all other
+   // content (including the embedded base64 images) untouched (Doc::commitEdit hook)
+   int CommitOverlayDoc(B2SOverlayDoc& doc)
+   {
+      if (doc.path.empty())
+         return 1;
+      std::ifstream in(doc.path, std::ios::binary);
+      if (!in)
+      {
+         LOGE("Failed to open B2S file for writing: " + PluginStrings::PathToUTF8(doc.path));
+         return 1;
+      }
+      const std::string buffer((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      in.close();
+      tinyxml2::XMLDocument xmlDoc;
+      if (xmlDoc.Parse(buffer.c_str(), buffer.size()) != tinyxml2::XML_SUCCESS)
+      {
+         LOGE("Failed to parse B2S file: " + PluginStrings::PathToUTF8(doc.path));
+         return 1;
+      }
+      tinyxml2::XMLElement* root = xmlDoc.FirstChildElement("DirectB2SData");
+      if (root == nullptr)
+         return 1;
+      auto* displays = root->FirstChildElement("Displays");
+      if (displays == nullptr)
+         displays = static_cast<tinyxml2::XMLElement*>(root->InsertEndChild(xmlDoc.NewElement("Displays")));
+      // Remove the previously authored DMD children; children of other display kinds are preserved
+      while (tinyxml2::XMLElement* dmd = displays->FirstChildElement("DMD"))
+         displays->DeleteChild(dmd);
+      for (const B2SDMDDisplay& display : doc.displays)
+      {
+         auto* const e = xmlDoc.NewElement("DMD");
+         e->SetAttribute("Target", display.target == 1 ? "ScoreView" : "Backglass");
+         if (!display.source.empty())
+            e->SetAttribute("Source", display.source.c_str());
+         e->SetAttribute("X", display.x);
+         e->SetAttribute("Y", display.y);
+         e->SetAttribute("W", display.w);
+         e->SetAttribute("H", display.h);
+         const PinballPlugin::OverlayDisplayOptions& o = display.options;
+         if (o.style > 0 && o.style <= 8)
+            e->SetAttribute("Style", PinballPlugin::OverlayDisplayStyleNames[o.style - 1]);
+         if (o.sizeW > 0 || o.sizeH > 0)
+            e->SetAttribute("Dots", std::format("{},{}", o.sizeW, o.sizeH).c_str());
+         if (o.tintR != 1.f || o.tintG != 1.f || o.tintB != 1.f)
+         {
+            const float tint[] = { o.tintR, o.tintG, o.tintB };
+            e->SetAttribute("Tint", PinballPlugin::OverlayFormatFloats(tint, 3).c_str());
+         }
+         if (o.glassTintR != 1.f || o.glassTintG != 1.f || o.glassTintB != 1.f)
+         {
+            const float tint[] = { o.glassTintR, o.glassTintG, o.glassTintB };
+            e->SetAttribute("GlassTint", PinballPlugin::OverlayFormatFloats(tint, 3).c_str());
+         }
+         if (o.glassRoughness != 0.f)
+            e->SetAttribute("GlassRoughness", PinballPlugin::OverlayFormatFloats(&o.glassRoughness, 1).c_str());
+         if (o.glassAmbientR != 1.f || o.glassAmbientG != 1.f || o.glassAmbientB != 1.f)
+         {
+            const float ambient[] = { o.glassAmbientR, o.glassAmbientG, o.glassAmbientB };
+            e->SetAttribute("GlassAmbient", PinballPlugin::OverlayFormatFloats(ambient, 3).c_str());
+         }
+         if (o.glassAreaX != 0 || o.glassAreaY != 0 || o.glassAreaW != 0 || o.glassAreaH != 0)
+            e->SetAttribute("GlassArea", std::format("{},{},{},{}", o.glassAreaX, o.glassAreaY, o.glassAreaW, o.glassAreaH).c_str());
+         if (o.glassPadL != 0.f || o.glassPadT != 0.f || o.glassPadR != 0.f || o.glassPadB != 0.f)
+         {
+            const float pad[] = { o.glassPadL, o.glassPadT, o.glassPadR, o.glassPadB };
+            e->SetAttribute("GlassPad", PinballPlugin::OverlayFormatFloats(pad, 4).c_str());
+         }
+         if (!display.glassImage.empty())
+         {
+            auto* const image = xmlDoc.NewElement("GlassImage");
+            image->SetAttribute("Value", to_base64(display.glassImage.data(), display.glassImage.size()).c_str());
+            e->InsertEndChild(image);
+         }
+         displays->InsertEndChild(e);
+      }
+      tinyxml2::XMLPrinter printer;
+      xmlDoc.Print(&printer);
+      std::ofstream out(doc.path, std::ios::binary | std::ios::trunc);
+      if (!out)
+      {
+         LOGE("Failed to write B2S file: " + PluginStrings::PathToUTF8(doc.path));
+         return 1;
+      }
+      out << printer.CStr();
+      out.close();
+      if (out.fail())
+      {
+         LOGE("Failed to write B2S file: " + PluginStrings::PathToUTF8(doc.path));
+         return 1;
+      }
+      return 0;
    }
 }
 
@@ -133,6 +218,41 @@ B2SServer::B2SServer(const MsgPluginAPI* const msgApi, unsigned int endpointId, 
    m_tableDir = tablePath.parent_path();
    m_tableName = PluginStrings::PathToUTF8(tablePath.stem());
    TryLoadB2S();
+
+   // Bind the shared overlay document to the plugin data model (see DMDOverlay/DMDOverlay.h):
+   // two views, bounds in artwork pixels rendered through the default full-view flip (no
+   // mapQuad hook), glass image embedded as base64, persistence by CommitOverlayDoc
+   static const char* targetNames[] = { "Backglass", "Score view" };
+   m_overlayDoc.vpxApi = m_vpxApi;
+   m_overlayDoc.log = [](const char* func, int line, unsigned int level, const std::string& message) { LPILog_CPP(func, line, level, message); };
+   m_overlayDoc.targetCount = 2;
+   m_overlayDoc.targetNames = targetNames;
+   m_overlayDoc.detectable = true;
+   m_overlayDoc.hasGlass = [](const B2SDMDDisplay& display) { return !display.glassImage.empty(); };
+   m_overlayDoc.glassBytes = [](B2SDMDDisplay& display) -> const vector<uint8_t>*
+   {
+      if (display.glassImage.empty())
+      {
+         display.glassKey = 0;
+         return nullptr;
+      }
+      size_t hash = 14695981039346656037ull;
+      for (const uint8_t byte : display.glassImage)
+         hash = (hash ^ byte) * 1099511628211ull;
+      display.glassKey = hash;
+      return &display.glassImage;
+   };
+   m_overlayDoc.setGlass = [](B2SDMDDisplay& display, const std::filesystem::path& picked)
+   {
+      if (!DMDOverlay::ReadFileBytes(picked, display.glassImage))
+      {
+         LOGE("Failed to read glass image file: "s + PluginStrings::PathToUTF8(picked));
+         return false;
+      }
+      return true;
+   };
+   m_overlayDoc.clearGlass = [](B2SDMDDisplay& display) { display.glassImage.clear(); };
+   m_overlayDoc.commitEdit = &CommitOverlayDoc;
 
    m_msgApi->SubscribeMsg(m_endpointId, m_onGetAuxRendererId, OnGetRenderer, this);
    m_msgApi->BroadcastMsg(m_endpointId, m_onAuxRendererChgId, nullptr);
@@ -285,12 +405,13 @@ void B2SServer::RegisterOverlaySheet()
 
    m_overlayDoc.path = m_b2sPath;
    m_overlayDoc.requestRefresh = [this]() { m_pagedUIApi->RequestSheetRefresh(m_endpointId, "backglass"); };
-   const string name = "Modify \""s + PluginStrings::PathToUTF8(m_b2sPath.filename()) + "\"";
+   const string name = "Edit \""s + PluginStrings::PathToUTF8(m_b2sPath.filename()) + "\"";
    PagedUISheetDef sheet {};
    sheet.version = 1;
+   sheet.id = "backglass";
    sheet.name = name.c_str();
    sheet.description = "Layout of the loaded backglass document";
-   DMDOverlay::DMDOverlay::InitEditSheetDef(&sheet, &m_overlayDoc);
+   DMDOverlay::InitEditSheetDef(&sheet, &m_overlayDoc);
    m_pagedUIApi->RegisterSheet(m_endpointId, &sheet);
    m_overlaySheetRegistered = true;
 }
@@ -301,10 +422,6 @@ int B2SServer::GetAnimationSlowDown(const string& name) const { return B2SAnimat
 int B2SServer::GetAllAnimationSlowDown() const { return allAnimationSlowDownProp_Get(); }
 
 int B2SServer::GetUsedLEDType() const { return usedLEDTypeProp_Get(); }
-
-int B2SServer::GetHideB2SDMD() const { return hideB2SDMDProp_Get(); }
-
-int B2SServer::GetHideDMD() const { return hideDMDProp_Get() ? 1 : -1; }
 
 static std::string CreateGuidString()
 {
@@ -388,14 +505,14 @@ std::shared_ptr<B2STable> B2SServer::AcquireB2STable()
       if (backImage.m_image)
          if (const VPXTextureInfo* texInfo = GetTextureInfo(backImage.m_image))
          {
-            m_overlayDoc.backglassW = texInfo->width;
-            m_overlayDoc.backglassH = texInfo->height;
+            m_overlayDoc.viewW[0] = texInfo->width;
+            m_overlayDoc.viewH[0] = texInfo->height;
          }
       if (m_b2s->m_dmdImage.m_image)
          if (const VPXTextureInfo* texInfo = GetTextureInfo(m_b2s->m_dmdImage.m_image))
          {
-            m_overlayDoc.scoreViewW = texInfo->width;
-            m_overlayDoc.scoreViewH = texInfo->height;
+            m_overlayDoc.viewW[1] = texInfo->width;
+            m_overlayDoc.viewH[1] = texInfo->height;
          }
       if (m_pagedUIApi != nullptr)
          m_pagedUIApi->RequestSheetRefresh(m_endpointId, "backglass");

@@ -46,12 +46,13 @@
     <ClCompile Include="..\..\plugins\b2slegacy\forms\FormBackglass.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\forms\FormDMD.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\Server.cpp" />
-    <ClCompile Include="..\..\plugins\b2slegacy\utils\DMDOverlay.cpp" />
+    <ClCompile Include="..\..\plugins\b2slegacy\DMDOverlay\DMDOverlay.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\utils\GraphicsPath.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\utils\Matrix.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\utils\PinMAMEAPI.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\utils\Timer.cpp" />
     <ClCompile Include="..\..\plugins\b2slegacy\utils\VPXGraphics.cpp" />
+    <ClCompile Include="../../plugins/nixie/NixieLayoutFile.cpp" />
     <ClCompile Include="../../plugins/plugins/ResURIResolver.cpp" />
     <ClCompile Include="../../third-party/include/tinyxml2/tinyxml2.cpp" />
   </ItemGroup>
@@ -99,12 +100,14 @@
     <ClInclude Include="..\..\plugins\b2slegacy\forms\FormDMD.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\Server.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\Brush.h" />
-    <ClInclude Include="..\..\plugins\b2slegacy\utils\DMDOverlay.h" />
+    <ClInclude Include="..\..\plugins\b2slegacy\DMDOverlay\DMDOverlay.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\GraphicsPath.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\Matrix.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\PinMAMEAPI.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\Timer.h" />
     <ClInclude Include="..\..\plugins\b2slegacy\utils\VPXGraphics.h" />
+    <ClInclude Include="../../plugins/nixie/NixieLayoutFile.h" />
+    <ClInclude Include="../../plugins/b2slegacy/DMDOverlay/OverlayDisplayOptions.h" />
     <ClInclude Include="../../plugins/plugins/ResURIResolver.h" />
     <ClInclude Include="../../third-party/include/tinyxml2/tinyxml2.h" />
   </ItemGroup>
