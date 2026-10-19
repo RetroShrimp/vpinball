@@ -85,7 +85,19 @@ void PUPMediaPlayer::SetMask(std::shared_ptr<SDL_Surface> mask)
    });
 }
 
-void PUPMediaPlayer::SetGameTime(double gameTime) { m_gameTime = gameTime; }
+void PUPMediaPlayer::SetGameTime(double gameTime)
+{
+   const double now = static_cast<double>(SDL_GetTicks()) / 1000.0;
+   if (m_lastGameTime < 0.0 || gameTime > m_lastGameTime)
+   {
+      m_lastGameTime = gameTime;
+      m_lastGameTimeWall = now;
+      m_gameTimeOffsetBase = m_gameTimeOffset;
+   }
+   else if (now - m_lastGameTimeWall > 0.1)
+      m_gameTimeOffset = m_gameTimeOffsetBase + (now - m_lastGameTimeWall);
+   m_gameTime = gameTime + m_gameTimeOffset;
+}
 
 double PUPMediaPlayer::GetPlayTime() const
 {
@@ -263,6 +275,18 @@ void PUPMediaPlayer::StopBlocking()
    m_pVideoContext = nullptr;
    m_videoStream = -1;
 
+   int holdSlot = -1;
+   for (int i = 0; i < static_cast<int>(m_frames.size()); i++)
+      if (m_frames[i].valid && m_frames[i].texture && (holdSlot < 0 || m_frames[i].age < m_frames[holdSlot].age))
+         holdSlot = i;
+   if (holdSlot >= 0)
+   {
+      if (m_holdTexture)
+         DeleteTexture(m_holdTexture);
+      m_holdTexture = m_frames[holdSlot].texture;
+      m_frames[holdSlot].texture = nullptr;
+   }
+
    for (auto& frame : m_frames)
    {
       if (frame.frame)
@@ -277,6 +301,12 @@ void PUPMediaPlayer::StopBlocking()
       frame.texture = nullptr;
       frame.uploaded = false;
       frame.pts = -1.0;
+   }
+
+   if (m_pendingPlay == 0 && m_holdTexture)
+   {
+      DeleteTexture(m_holdTexture);
+      m_holdTexture = nullptr;
    }
 
    if (m_swsContext)
@@ -335,12 +365,56 @@ void PUPMediaPlayer::SetLength(int length)
    });
 }
 
+void PUPMediaPlayer::RenderHold(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha)
+{
+   if (m_holdTexture == nullptr)
+      return;
+   const VPXTextureInfo* texInfo = GetTextureInfo(m_holdTexture);
+   ctx->DrawImage(ctx, m_holdTexture, 1.f, 1.f, 1.f, alpha, 0.f, 0.f, static_cast<float>(texInfo->width), static_cast<float>(texInfo->height), 0.f, 0.f, 0.f,
+      static_cast<float>(destRect.x), static_cast<float>(destRect.y), static_cast<float>(destRect.w), static_cast<float>(destRect.h));
+}
+
+void PUPMediaPlayer::RenderLastFrame(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha)
+{
+   int slot = -1;
+   for (int i = 0; i < static_cast<int>(m_frames.size()); i++)
+      if (m_frames[i].valid && (slot < 0 || m_frames[i].pts > m_frames[slot].pts))
+         slot = i;
+   if (slot < 0)
+      return;
+   FrameInfo& frame = m_frames[slot];
+   if (!frame.uploaded)
+   {
+      frame.uploaded = true;
+      if (frame.texture != nullptr)
+      {
+         DeleteTexture(frame.texture);
+         frame.texture = nullptr;
+      }
+      UpdateTexture(&frame.texture, frame.frame->width, frame.frame->height, VPXTextureFormat::VPXTEXFMT_sRGBA8, frame.frame->data[0]);
+   }
+   if (frame.texture == nullptr)
+      return;
+   const VPXTextureInfo* texInfo = GetTextureInfo(frame.texture);
+   ctx->DrawImage(ctx, frame.texture, 1.f, 1.f, 1.f, alpha, 0.f, 0.f, static_cast<float>(texInfo->width), static_cast<float>(texInfo->height), 0.f, 0.f, 0.f,
+      static_cast<float>(destRect.x), static_cast<float>(destRect.y), static_cast<float>(destRect.w), static_cast<float>(destRect.h));
+}
+
 void PUPMediaPlayer::Render(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha)
 {
-   if (!m_running)
+   if (!m_running && m_holdTexture == nullptr && !IsPlaying() && (SDL_GetTicks() - m_endTicks) >= 100)
       return;
 
    std::lock_guard lock(m_mutex);
+
+   if (!m_running)
+   {
+      if (m_holdTexture)
+         RenderHold(ctx, destRect, alpha);
+      else if (IsPlaying() || (SDL_GetTicks() - m_endTicks) < 100)
+         RenderLastFrame(ctx, destRect, alpha);
+      return;
+   }
 
    const uint64_t nowTicks = SDL_GetTicks();
    const uint64_t renderGap = m_lastRenderTicks != 0 ? (nowTicks - m_lastRenderTicks) : 0;
@@ -379,7 +453,10 @@ void PUPMediaPlayer::Render(VPXRenderContext2D* const ctx, const SDL_Rect& destR
       }
    }
    if (selectedFrameSlot == -1)
+   {
+      RenderHold(ctx, destRect, alpha);
       return;
+   }
    FrameInfo& selectedFrame = m_frames[selectedFrameSlot];
 
    if (!selectedFrame.uploaded)
@@ -396,7 +473,15 @@ void PUPMediaPlayer::Render(VPXRenderContext2D* const ctx, const SDL_Rect& destR
       UpdateTexture(&selectedFrame.texture, selectedFrame.frame->width, selectedFrame.frame->height, VPXTextureFormat::VPXTEXFMT_sRGBA8, selectedFrame.frame->data[0]);
    }
    if (selectedFrame.texture == nullptr)
+   {
+      RenderHold(ctx, destRect, alpha);
       return;
+   }
+   if (m_holdTexture)
+   {
+      DeleteTexture(m_holdTexture);
+      m_holdTexture = nullptr;
+   }
 
    const VPXTextureInfo* texInfo = GetTextureInfo(selectedFrame.texture);
    ctx->DrawImage(ctx, selectedFrame.texture, 1.f, 1.f, 1.f, alpha, 0.f, 0.f, static_cast<float>(texInfo->width), static_cast<float>(texInfo->height), 0.f, 0.f, 0.f,
@@ -579,6 +664,7 @@ void PUPMediaPlayer::Run()
       std::lock_guard lock(m_mutex);
       LOGD(std::format("Player stopped: name={}, file={}", m_name, PluginStrings::PathToUTF8(m_filename.filename())));
       m_running = false;
+      m_endTicks = SDL_GetTicks();
       StopAudioStream(m_audioStreamId);
       m_onEndCallback();
    }

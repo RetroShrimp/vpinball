@@ -64,7 +64,7 @@ void PUPPinDisplay::playlistplay(int screenNum, const string& playlist)
    {
       PUPPlaylist* pPlaylist = pScreen->GetPlaylist(playlist);
       if (pPlaylist)
-         pScreen->Play(pPlaylist, std::filesystem::path(), pPlaylist->GetVolume(), 0, PlayAction::Normal, 0);
+         pScreen->Play(pPlaylist, std::filesystem::path(), static_cast<float>(pScreen->GetDefaultVolume()), 0, PlayAction::Normal, 0);
       else
          LOGE(std::format("Playlist not found: screenNum={}, playlist={}", screenNum, playlist));
    }
@@ -89,7 +89,7 @@ void PUPPinDisplay::play(int screenNum, const string& playlist, const string& pl
          LOGE(std::format("Playlist not found: screen={{{}}}, playlist={}", pScreen->ToString(false), playlist));
          return;
       }
-      pScreen->Play(playlist, PluginStrings::PathFromUTF8(playfilename), pPlaylist->GetVolume(), 0);
+      pScreen->Play(playlist, PluginStrings::PathFromUTF8(playfilename), static_cast<float>(pScreen->GetDefaultVolume()), 0);
    }
 }
 
@@ -128,14 +128,14 @@ void PUPPinDisplay::setVolume(int screenNum, int vol)
 {
    std::shared_ptr<PUPScreen> pScreen = m_pupManager.GetScreen(screenNum, true);
    if (pScreen)
-      pScreen->SetVolume(static_cast<float>(vol));
+      pScreen->SetDefaultVolume(vol);
 }
 
 void PUPPinDisplay::setVolumeCurrent(int screenNum, int vol)
 {
    std::shared_ptr<PUPScreen> pScreen = m_pupManager.GetScreen(screenNum, true);
    if (pScreen)
-      pScreen->SetVolumeCurrent(static_cast<float>(vol));
+      pScreen->SetVolumeCurrent(vol);
 }
 
 void PUPPinDisplay::playpause(int screenNum)
@@ -265,7 +265,8 @@ void PUPPinDisplay::SetB2SFilter(const string& value)
 void PUPPinDisplay::Show(int screenNum)
 {
    std::shared_ptr<PUPScreen> pScreen = m_pupManager.GetScreen(screenNum, true);
-   NOT_IMPLEMENTED("Not implemented: screenNum=" + std::to_string(screenNum));
+   if (pScreen && (pScreen->GetMode() == PUPScreen::Mode::Off || pScreen->GetMode() == PUPScreen::Mode::MusicOnly))
+      pScreen->SetMode(PUPScreen::Mode::Show);
 }
 
 void PUPPinDisplay::Hide(int screenNum)
@@ -297,6 +298,38 @@ void PUPPinDisplay::SendMSG(const string& szMsg)
                if (pScreen) {
                   int fn = json["FN"s].as<int>();
                   switch (fn) {
+                     case 1:
+                        // show screen { "mt":301, "SN": XX, "FN":1 }
+                        Show(sn);
+                        break;
+                     case 18:
+                        // reset to ForceBack { "mt":301, "SN": XX, "FN":18 }
+                        pScreen->SetTopmost(false);
+                        pScreen->SetMode(PUPScreen::Mode::ForceBack);
+                        break;
+                     case 20:
+                     {
+                        // set screen alpha { "mt":301, "SN": XX, "FN":20, "AM":1, "AV":255 }
+                        const int am = json["AM"s].as<int>(0);
+                        pScreen->m_screenAlpha = am ? static_cast<float>(json["AV"s].as<int>(255)) / 255.f : 1.f;
+                        break;
+                     }
+                     case 27:
+                        // show label page { "mt":301, "SN": XX, "FN":27, "PN":1, "HS":3, "EX":"" }
+                        LabelShowPage(sn, json["PN"s].as<int>(0), json["HS"s].as<int>(0), json["EX"s].as_str());
+                        break;
+                     case 28:
+                        // hide screen { "mt":301, "SN": XX, "FN":28 }
+                        Hide(sn);
+                        break;
+                     case 40:
+                        // set volume { "mt":301, "SN": XX, "FN":40, "VL":9 }
+                        pScreen->SetVolumeCurrent(json["VL"s].as<int>(0));
+                        break;
+                     case 54:
+                        // default duck percent for '-xx' file names { "mt":301, "SN": XX, "FN":54, "DV":50 }
+                        pScreen->SetDefaultDuck(json["DV"s].as<int>(-1));
+                        break;
                      case 2:
                         // See pDisableLoopRefresh — form state flags (FF/FO), controls Windows form redraw
                         // { "mt":301, "SN": XX, "FN": 2, "FF":0/1, "FO":0/1 }
@@ -333,16 +366,17 @@ void PUPPinDisplay::SendMSG(const string& szMsg)
                         break;
                      case 10:
                         // set all displays all volume { "mt":301, "SN": XX, "FN":10, "VL":9}  VL=volume level
-                        NOT_IMPLEMENTED(std::format("Set all displays all volume not implemented: screen={{{}}}, fn={}, szMsg={}", pScreen->ToString(false), fn, szMsg));
+                        m_pupManager.SetDefaultVolumeAll(json["VL"s].as<int>(0));
                         break;
                      case 11:
                         // set all volume { "mt":301, "SN": XX, "FN":11, "VL":9}  VL=volume level
                         LOGD(std::format("Set all volume requested: screen={{{}}}, fn={}, szMsg={}", pScreen->ToString(false), fn, szMsg));
-                        pScreen->SetVolume(static_cast<float>(json["VL"s].as<double>()));
+                        pScreen->SetVolumeCurrent(json["VL"s].as<int>(0));
                         break;
                      case 12:
                         // "{ ""mt"":301, ""SN"": 18, ""FN"":12 }" 'STOPSCREEN
-                        NOT_IMPLEMENTED("StopScreen? not implemented. szMsg=" + szMsg);
+                        pScreen->Stop();
+                        pScreen->SetMode(PUPScreen::Mode::Off);
                         break;
                      case 15:
                         // set screen custompos { 'mt':301, 'SN':15,'FN':15,'CP':'parent_screen,x,y,w,h'} CP = CustomPos String, coordinates relative in %
@@ -364,15 +398,16 @@ void PUPPinDisplay::SendMSG(const string& szMsg)
                         break;
                      case 22:
                      {
-                        // set screen transparency { "mt":301, "SN": 16, "FN":22, "AM":1, "AV":255 }
+                        // set overlay alpha { "mt":301, "SN": 16, "FN":22, "AM":1, "AV":255 }
                         // AV: Alpha Value (0-255), AM: Alpha mode enabled (1) or disabled (0)
-                        int am = json["AM"s].as<int>(0);
-                        if (am)
-                           pScreen->m_screenAlpha = static_cast<float>(json["AV"s].as<int>(255)) / 255.f;
-                        else
-                           pScreen->m_screenAlpha = 1.f;
+                        const int am = json["AM"s].as<int>(0);
+                        pScreen->m_overlayAlpha = am ? static_cast<float>(json["AV"s].as<int>(255)) / 255.f : 1.f;
                         break;
                      }
+                     case 26:
+                        // set screen volume multiplier { "mt":301, "SN": XX, "FN":26, "VL":100 }
+                        pScreen->SetVolumeMultiplier(json["VL"s].as<int>(0));
+                        break;
                      case 30:
                         // {'mt':301, 'SN': XX, 'FN':30, 'PM':1 } set (play ?) jukebox mode: jukebox mode will auto advance to next media in playlist and you can use next/prior sub to manuall advance
                         NOT_IMPLEMENTED(std::format("Jukebox mode not implemented: screen={{{}}}, fn={}, szMsg={}", pScreen->ToString(false), fn, szMsg));
@@ -402,8 +437,8 @@ void PUPPinDisplay::SendMSG(const string& szMsg)
                      {
                         // See PUPDMD AudioDuckPuP — temporarily duck all screens except master
                         // "{ ""mt"":301, ""SN"": "& MasterPuPID& ", ""FN"": 42, ""DV"": "&VolLevel&" , ""ALL"":1 }"
-                        float duckLevel = static_cast<float>(json["DV"s].as<int>(50)) / 100.0f;
-                        m_pupManager.DuckAllExcept(sn, duckLevel);
+                        const int duckPercent = json["DV"s].as<int>(0);
+                        m_pupManager.DuckAllExcept(duckPercent == 0 ? 1 : duckPercent, sn, json["ALL"s].as<int>(0) == 1);
                         break;
                      }
                      case 45:
@@ -583,6 +618,14 @@ void PUPPinDisplay::LabelShowPage(int screenNum, int PageNum, int Seconds, const
    //                                 playing and then autoreturn
    //   Sub PDMDSplashPagePlayingHUD 'will show labelpage and auto return to def after current
    //                                 video stopped
+   if (StrCompareNoCase(Special, "forceshow"s) || StrCompareNoCase(Special, "forcehide"s))
+   {
+      const bool show = StrCompareNoCase(Special, "forceshow"s);
+      for (PUPLabel* pLabel : pScreen->GetLabels())
+         if (pLabel->GetPagenum() == PageNum && PageNum >= 0)
+            pLabel->SetVisible(show && pLabel->GetOnShowVisible());
+      return;
+   }
    if (StrCompareNoCase(Special, "hidehudplay"s))
    {
       pScreen->m_hudReturn = PUPScreen::HudReturn::RestoreHud;
@@ -592,7 +635,11 @@ void PUPPinDisplay::LabelShowPage(int screenNum, int PageNum, int Seconds, const
       pScreen->m_hudReturn = PUPScreen::HudReturn::ReplayTrigger;
    else
       pScreen->m_hudReturn = PUPScreen::HudReturn::None;
-   pScreen->SetPage(PageNum, Seconds);
+   if (StrCompareNoCase(Special, "clear"s))
+      for (PUPLabel* pLabel : pScreen->GetLabels())
+         if (pLabel->GetPagenum() == PageNum)
+            pLabel->SetCaption(""s);
+   pScreen->SetPage(PageNum, Seconds >= 501 ? Seconds : Seconds * 1000);
 }
 
 void PUPPinDisplay::LabelInit(int screenNum)
@@ -680,11 +727,10 @@ int PUPPinDisplay::GameUpdate(const string& GameTitle, int Func, int FuncData, c
 
 string PUPPinDisplay::GetVersion() const
 {
-   constexpr int nVersionNo0 = 1;
-   constexpr int nVersionNo1 = 5;
+   constexpr int nVersionNo0 = 2;
+   constexpr int nVersionNo1 = 0;
    constexpr int nVersionNo2 = 99;
-   constexpr int nVersionNo3 = 99;
-   static const string version = std::to_string(nVersionNo0) + '.' + std::to_string(nVersionNo1) + '.' + std::to_string(nVersionNo2) + '.' + std::to_string(nVersionNo3);
+   static const string version = std::to_string(nVersionNo0) + '.' + std::to_string(nVersionNo1) + '.' + std::to_string(nVersionNo2);
    return version;
 }
 
@@ -701,7 +747,7 @@ void PUPPinDisplay::playevent(int screenNum, const string& playlist, const strin
    if (!pScreen)
       return;
 
-   if (playtype < static_cast<int>(PlayAction::Normal) || playtype > static_cast<int>(PlayAction::CustomFunction)) {
+   if (playtype < static_cast<int>(PlayAction::Normal) || playtype == 10 || playtype > static_cast<int>(PlayAction::QueueAlways)) {
       NOT_IMPLEMENTED("Not implemented: playevent playtype=" + std::to_string(playtype));
       return;
    }

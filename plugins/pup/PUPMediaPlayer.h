@@ -33,6 +33,8 @@ public:
 
 private:
    void StopBlocking();
+   void RenderHold(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha);
+   void RenderLastFrame(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha);
    void Run();
    AVCodecContext* OpenStream(AVFormatContext* pInputFormatContext, int stream);
    void HandleAudioFrame(AVFrame* pFrame, bool sync);
@@ -49,6 +51,10 @@ private:
    double GetPlayTime() const;
    bool m_syncOnGameTime = false;
    double m_gameTime = -1.0;
+   double m_lastGameTime = -1.0;
+   double m_lastGameTimeWall = 0.0;
+   double m_gameTimeOffset = 0.0;
+   double m_gameTimeOffsetBase = 0.0;
    double m_startTimestamp = 0.0; // timestamp in seconds when the play command was called
 
    std::filesystem::path m_filename;
@@ -81,6 +87,8 @@ private:
       int age = 0;
    };
    vector<FrameInfo> m_frames;
+   std::atomic<VPXTexture> m_holdTexture = nullptr;
+   std::atomic<uint64_t> m_endTicks = 0;
    SwsContext* m_swsContext = nullptr;
    uint64_t m_lastRenderTicks = 0;
 

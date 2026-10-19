@@ -430,6 +430,9 @@ void Player::InitTableSession(const bool isInitial)
 
    // Prepare table for playing
 
+   if (!isInitial)
+      m_loadProgress->SetProgress("Starting Table Session..."s, 0.f);
+
    PLOGI << "Compiling script"; // For profiling
 
    // make sure the load directory is the active directory
@@ -1153,6 +1156,10 @@ void Player::ShutdownTableSession()
       editable->TimerRelease(m_vht);
    }
    m_vht.clear();
+   // Runtime balls are session objects: drop them from the table so that a new session on this table (e.g. getting back from a play test) starts clean
+   for (Ball *const ball : m_vball)
+      if (ball->m_runtimeBall && FindIndexOf(m_ptable->GetParts(), static_cast<IEditable *>(ball)) != -1)
+         m_ptable->RemovePart(ball);
    m_vball.clear();
 
    if (m_implicitPlayfieldMesh)
@@ -1506,7 +1513,7 @@ void Player::OnFocusChanged()
    if (m_closing == CS_CLOSED)
       return;
 
-   SetPlayState(m_wantsToPlay);
+   SetPlayState(m_wantsToPlay, m_pauseTimeTarget == 0 ? 0 : max(1u, m_pauseTimeTarget - min(m_pauseTimeTarget, m_time_msec)));
 
    if (m_playfieldWnd->IsFocused())
    {
@@ -1606,6 +1613,7 @@ Ball *Player::CreateBall(const float x, const float y, const float z, const floa
    CComObject<Ball>::CreateInstance(&pBall);
    pBall->AddRef();
    pBall->Init(x, y, false, true);
+   pBall->m_runtimeBall = true;
    m_ptable->AddPart(pBall);
    pBall->m_hitBall.m_d.m_pos.z = z + radius;
    pBall->m_hitBall.m_d.m_mass = mass;

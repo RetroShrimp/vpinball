@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <random>
 
 namespace PUP {
 
@@ -23,7 +24,7 @@ namespace PUP {
 
    notes:
 
-     AlphaSort=0 is Randomize checked
+     AlphaSort=1 is Randomize checked
 */
 
 static const std::filesystem::path emptyPath;
@@ -69,6 +70,8 @@ PUPPlaylist::PUPPlaylist(PUPManager* manager, const std::filesystem::path& szFol
       }
    }
    std::ranges::sort(m_files.begin(), m_files.end());
+   if (m_randomize)
+      std::shuffle(m_files.begin(), m_files.end(), std::mt19937(std::random_device {}()));
 }
 
 PUPPlaylist::~PUPPlaylist()
@@ -121,8 +124,8 @@ PUPPlaylist* PUPPlaylist::CreateFromCSV(PUPManager* manager, const string& line)
       szFolderPath.filename(), // Subfolder
       parts[2], // Description
       (string_to_int(parts[3], 0) == 1), // Randomize
-      string_to_int(parts[4], 0), // Rest seconds
-      static_cast<float>(string_to_int(parts[5], 0)), // Volume
+      string_to_int(parts[4], 30), // Rest seconds
+      static_cast<float>(string_to_int(parts[5], 100)), // Volume
       string_to_int(parts[6], 0)); // Priority
 
    return pPlaylist;
@@ -136,13 +139,10 @@ std::filesystem::path PUPPlaylist::GetPlayFile(const std::filesystem::path& szFi
 
 const std::filesystem::path& PUPPlaylist::GetNextPlayFile()
 {
-   if (!m_randomize) {
-      const std::filesystem::path& file = m_files[m_lastIndex];
-      if (++m_lastIndex >= (int)m_files.size())
-         m_lastIndex = 0;
-      return file;
-   }
-   return m_files[rand() % m_files.size()];
+   const std::filesystem::path& file = m_files[m_lastIndex];
+   if (++m_lastIndex >= (int)m_files.size())
+      m_lastIndex = 0;
+   return file;
 }
 
 std::filesystem::path PUPPlaylist::GetPlayFilePath(const std::filesystem::path& szFilename)

@@ -32,7 +32,7 @@ public:
    };
 
    PUPScreen(PUPManager* manager, PUPScreen::Mode mode, int screenNum, const string& screenDes, bool transparent,
-      float volume, std::unique_ptr<PUPCustomPos> pCustomPos, const std::vector<PUPPlaylist*>& playlists);
+      int volumeMultiplier, std::unique_ptr<PUPCustomPos> pCustomPos, const std::vector<PUPPlaylist*>& playlists);
    ~PUPScreen();
 
    static std::unique_ptr<PUPScreen> CreateFromCSV(PUPManager* manager, const string& line, const std::vector<PUPPlaylist*>& playlists);
@@ -54,6 +54,7 @@ public:
    bool IsTransparent() const { return m_transparent; }
 
    float m_screenAlpha = 1.0f;
+   float m_overlayAlpha = 1.0f;
    bool m_hudVisible = true;
    bool m_padTextAlways = false;
    // Action queued by LabelShowPage, applied when the main media ends.
@@ -67,11 +68,20 @@ public:
    PUPTrigger* m_lastPlayedTrigger = nullptr;
    void OnMainMediaEnd();
 
-   float GetVolume() const { return m_volume; }
-   void SetMainVolume(float volume); // Set user defined global volume (allow to mute)
-   void SetVolume(float volume); // Set default, and apply it to played media
-   void SetVolumeCurrent(float volume); // Only modifiy volume of currently playing medias
-   void SetOnMainEndCallback(const std::function<void()>& callback);
+   int GetDefaultVolume() const { return m_defaultVolume; }
+   int GetCurrentVolume() const { return m_currentVolume; }
+   int GetVolumeMultiplier() const { return m_volumeMultiplier; }
+   void SetMainVolume(float volume);
+   void SetVolumeMultiplier(int multiplier);
+   void SetDefaultVolume(int volume);
+   void SetVolumeCurrent(int volume);
+   void UpdateVolumeFade();
+   void Duck(int percent);
+   void Unduck();
+   bool IsDuckMaster() const { return m_duckMaster; }
+   void SetDuckMaster(bool master) { m_duckMaster = master; }
+   int GetDefaultDuck() const { return m_defaultDuck; }
+   void SetDefaultDuck(int percent) { m_defaultDuck = percent; }
 
    const std::unique_ptr<PUPCustomPos>& GetCustomPos() const { return m_pCustomPos; }
    void SetCustomPos(const string& szCustomPos);
@@ -92,7 +102,8 @@ public:
    PUPLabel* GetLabel(const string& labelName);
    void SendLabelToFront(PUPLabel* pLabel);
    void SendLabelToBack(PUPLabel* pLabel);
-   void SetPage(int pagenum, int seconds);
+   void SetPage(int pagenum, int durationMs);
+   const vector<PUPLabel*>& GetLabels() const { return m_labels; }
 
    void AddPlaylist(PUPPlaylist* pPlaylist);
    PUPPlaylist* GetPlaylist(const string& szFolder);
@@ -126,6 +137,10 @@ public:
 private:
    void LoadTriggers();
    void UpdateTimers();
+   int ResolveVolume(float volume, const PUPPlaylist* pPlaylist) const;
+   float EffectiveVolume(int volume) const;
+   void ApplyVolume(int volume);
+   void StartVolumeFade(int from, int to, int step);
 
    PUPManager* const m_pManager = nullptr;
    const int m_screenNum;
@@ -135,7 +150,16 @@ private:
    bool m_topmost = false;
    bool m_transparent;
    float m_mainVolume = 1.f;
-   float m_volume;
+   int m_volumeMultiplier;
+   int m_defaultVolume = 100;
+   int m_currentVolume = 100;
+   bool m_duckMaster = false;
+   int m_duckOrigVolume = -1;
+   int m_defaultDuck = -1;
+   int m_fadeVolume = -1;
+   int m_fadeTarget = 0;
+   int m_volumeFadeStep = 0;
+   uint64_t m_fadeNextTick = 0;
    std::unique_ptr<PUPCustomPos> m_pCustomPos;
    SDL_Rect m_rect;
    vector<PUPLabel*> m_labels;

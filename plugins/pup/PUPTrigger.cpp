@@ -54,14 +54,14 @@ static vector<PUPTrigger::PUPTriggerCondition> ParseConditions(const string& tri
          // Parse triggers with state (e.g., "W5=1")
          type = token[0];
          index = string_to_int(token.substr(1, equalPos - 1), -1);
-         expected = string_to_int(token.substr(equalPos + 1), -1);
+         expected = string_to_int(token.substr(equalPos + 1), 1);
       }
       else if (token.length() >= 2)
       {
          // Parse triggers without state (e.g., "S10")
          type = token[0];
          index = string_to_int(token.substr(1), -1);
-         expected = -1;
+         expected = 1;
       }
       else
       {
@@ -73,7 +73,7 @@ static vector<PUPTrigger::PUPTriggerCondition> ParseConditions(const string& tri
 }
 
 PUPTrigger::PUPTrigger(bool active, const string& szDescript, const string& szTrigger, PUPScreen* pScreen, PUPPlaylist* pPlaylist, const std::filesystem::path& szPlayFile, float volume,
-   int priority, int length, int counter, int restSeconds, PlayAction playAction)
+   int priority, int length, int counter, int restSeconds, PlayAction playAction, bool useDefaults)
    : m_szDescript(szDescript)
    , m_szTrigger(szTrigger)
    , m_pScreen(pScreen)
@@ -125,6 +125,11 @@ PUPTrigger::PUPTrigger(bool active, const string& szDescript, const string& szTr
       m_action = [&]() { m_pScreen->Play(m_pPlaylist, m_szPlayFile, m_volume, m_priority, PlayAction::SkipSamePriority, m_length); };
       break;
 
+   case PlayAction::QueueSameP:
+   case PlayAction::QueueAlways:
+      m_action = [&]() { m_pScreen->Play(m_pPlaylist, m_szPlayFile, m_volume, m_priority, m_playAction, m_length); };
+      break;
+
    case PlayAction::StopPlayer:
       m_action = [&]() { m_pScreen->Stop(m_priority); };
       break;
@@ -138,6 +143,9 @@ PUPTrigger::PUPTrigger(bool active, const string& szDescript, const string& szTr
       m_action = [](){};
       break;
    }
+
+   if (useDefaults && m_playAction != PlayAction::PlaySSF)
+      m_action = [&]() { m_pScreen->Play(m_pPlaylist, std::filesystem::path(), static_cast<float>(m_pScreen->GetDefaultVolume()), 0, PlayAction::Normal, 0); };
 }
 
 PUPTrigger* PUPTrigger::CreateFromCSV(PUPScreen* pScreen, const string& line)
@@ -207,6 +215,10 @@ PUPTrigger* PUPTrigger::CreateFromCSV(PUPScreen* pScreen, const string& line)
       playAction = PlayAction::SkipSamePriority;
    else if (StrCompareNoCase(triggerPlayAction, "CustomFunc"s))
       playAction = PlayAction::CustomFunction;
+   else if (StrCompareNoCase(triggerPlayAction, "QueueSameP"s))
+      playAction = PlayAction::QueueSameP;
+   else if (StrCompareNoCase(triggerPlayAction, "QueueAlways"s))
+      playAction = PlayAction::QueueAlways;
    else
       playAction = PlayAction::Normal;
 
@@ -247,12 +259,13 @@ PUPTrigger* PUPTrigger::CreateFromCSV(PUPScreen* pScreen, const string& line)
       pScreen,
       pPlaylist,
       szPlayFile,
-      parts[7].empty() ? pPlaylist->GetVolume() : string_to_float(parts[7], 0), // volume
-      parts[8].empty() ? pPlaylist->GetPriority() : string_to_int(parts[8], 0), // priority
+      parts[7].empty() ? pPlaylist->GetVolume() : string_to_float(parts[7], 100), // volume
+      string_to_int(parts[8], 0), // priority
       string_to_int(parts[9], 0), // length
       string_to_int(parts[10], 0), // counter
-      parts[11].empty() ? pPlaylist->GetRestSeconds() : string_to_int(parts[11], 0), // rest seconds
-      playAction
+      string_to_int(parts[11], 0), // rest seconds
+      playAction,
+      string_to_int(parts[13], 0) == 1 // defaults
    );
 }
 
@@ -268,17 +281,38 @@ bool PUPTrigger::IsResting() const
 }
 
 std::function<void()> PUPTrigger::Trigger() {
-   if (IsResting()) {
-      LOGD(std::format("Skipping resting trigger: trigger={{{}}}", ToString()));
-      return [](){};
-   }
    if (m_pScreen->GetMode() == PUPScreen::Mode::Off) {
       LOGD(std::format("Skipping trigger on Off screen: trigger={{{}}}", ToString()));
       return [](){};
    }
+   if (m_restSeconds < 0) {
+      if (!m_delayPending) {
+         m_delayPending = true;
+         const double delay = (m_restSeconds > -99) ? -m_restSeconds : -m_restSeconds / 1000.0;
+         m_pScreen->GetManager()->RunLater(delay, [this]() { m_delayPending = false; Fire(false); });
+      }
+      return [](){};
+   }
+   return [this]() { Fire(true); };
+}
+
+void PUPTrigger::Fire(bool checkRest) {
+   if (m_counter > 0) {
+      m_hitCount++;
+      if (m_hitCount >= m_counter) {
+         m_hitCount = 0;
+         return;
+      }
+      if (m_hitCount > 1)
+         return;
+   }
+   if (checkRest && IsResting()) {
+      LOGD(std::format("Skipping resting trigger: trigger={{{}}}", ToString()));
+      return;
+   }
    m_lastTriggered = SDL_GetTicks();
    LOGD(std::format("Processing trigger: trigger={{{}}}", ToString()));
-   return m_action;
+   m_action();
 }
 
 void PUPTrigger::Invoke() {

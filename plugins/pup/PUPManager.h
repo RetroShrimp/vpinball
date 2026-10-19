@@ -76,7 +76,9 @@ enum class PlayAction : int
    SetBG,            // Set Background will set a new default looping "Background" file. When other files are done playing, then this new SetBG file will be played in a loop. Example: This can be handy for setting a new looping "mode" video, so that new other video events during the new mode will fall back to this SetBG video. Then you can change SetBG again to the main game mode video when the mode is completed.
    PlaySSF,          // used to play WAV files for Surround Sound Feedback. (You don't want these sounds playing from your front / backbox speakers). The settings for the 3D position of the sound files are set in COUNTER. The format is in X,Z,Y. Example: "-2,1,-8". X values range from -10 (left), 0 (center), 10 (right). Z values don't ever change and stay at 1. Y values range from 0 (top), -5 (center), -10 (bottom). NOTE: This currently will only work with the DEFAULT sound card in Windows. Additional sound card / devices are not yet supported!
    SkipSamePriority, // this will ignore the trigger if the file playing has the same Priority. This is nice for events such as Jackpot videos or others that will play very often, and you don't want to have them constantly interrupting each other. "Normal" PlayAction files with the same Priority will interrupt each other no matter the Rest Seconds. Using SkipSamePri will not play the new file (with the same Priority) if the current file is still playing and allows for smoother non-interruptive action for common events.
-   CustomFunction    // Call a custom function
+   CustomFunction,   // Call a custom function
+   QueueSameP = 11,  // Queue after the current file when it passes the priority rules
+   QueueAlways = 12  // Queue after the current file whatever its priority
 };
 
 const string& PlayActionToString(PlayAction value);
@@ -123,9 +125,11 @@ public:
    PUPFont* GetFont(const string& szFont);
 
    void QueueDOFEvent(char c, int id, int value);
+   void RunLater(double seconds, std::function<void()> fn);
 
-   void DuckAllExcept(int masterScreenNum, float duckLevel);
+   void DuckAllExcept(int percent, int masterScreenNum, bool all);
    void Unduck();
+   void SetDefaultVolumeAll(int volume);
 
 private:
    void ApplyGameDir(const std::filesystem::path& path, const std::string_view& gameId, const ControllerDef& controller);
@@ -188,9 +192,7 @@ private:
 
    std::mutex m_eventMutex;
    std::unique_ptr<B2SPluginEventStream> m_B2SPluginEventStream;
-
-   int m_duckMasterScreen = -1;
-   ankerl::unordered_dense::map<int, float> m_preDuckVolumes;
+   std::shared_ptr<int> m_runToken = std::make_shared<int>(0);
 };
 
 }
