@@ -55,17 +55,17 @@ public:
 
    float m_screenAlpha = 1.0f;
    float m_overlayAlpha = 1.0f;
-   bool m_hudVisible = true;
+   bool m_hudVisible = true; // FN 3: the whole label overlay shown or hidden
+   bool m_hideDuringPlay = false; // FN 34: labels hidden and label commands ignored until the current media ends
    bool m_padTextAlways = false;
    // Action queued by LabelShowPage, applied when the main media ends.
    enum class HudReturn
    {
       None,
-      RestoreHud,    // "hidehudplay": re-show the HUD overlay
-      ReplayTrigger, // "returnplay":  re-fire m_lastPlayedTrigger
+      RestoreHud,  // "hidehudplay": re-show the HUD overlay
+      RestorePage, // "returnplay":  return to the default page
    };
    HudReturn m_hudReturn = HudReturn::None;
-   PUPTrigger* m_lastPlayedTrigger = nullptr;
    void OnMainMediaEnd();
 
    int GetDefaultVolume() const { return m_defaultVolume; }
@@ -96,13 +96,15 @@ public:
    vector<PUPTrigger*>* GetTriggers(const string& szTrigger);
    const ankerl::unordered_dense::map<string, vector<PUPTrigger*>>& GetTriggers() const { return m_triggerMap; }
 
-   bool IsLabelInit() const { return m_labelInit; }
-   void SetLabelInit() { m_labelInit = true; }
+   void LabelInit();
    void AddLabel(PUPLabel* pLabel);
    PUPLabel* GetLabel(const string& labelName);
    void SendLabelToFront(PUPLabel* pLabel);
    void SendLabelToBack(PUPLabel* pLabel);
-   void SetPage(int pagenum, int durationMs);
+   void SendLabelToBackground(PUPLabel* pLabel);
+   void RemoveLabel(PUPLabel* pLabel);
+   int GetPage() const { return m_pagenum; }
+   void SetPage(int pagenum, int durationMs, const string& special = ""s);
    const vector<PUPLabel*>& GetLabels() const { return m_labels; }
 
    void AddPlaylist(PUPPlaylist* pPlaylist);
@@ -127,7 +129,6 @@ public:
    bool HasUnderlay() const { return !m_background.GetFile().empty(); }
    bool IsBackgroundPlaying() const;
    bool IsMainPlaying() const;
-   bool HasOverlay() const { return !m_overlay.GetFile().empty(); }
 
    const SDL_Rect& GetRect() const { return m_rect; }
    void Render(VPXRenderContext2D* const ctx, int pass);
@@ -168,7 +169,6 @@ private:
    ankerl::unordered_dense::map<string, vector<PUPTrigger*>> m_triggerMap;
    PUPImage m_background;    // PuPFrames playlist - underlay behind video
    PUPImage m_staticImage;   // Static PNG/JPG from Default function - renders on video layer, bypasses FFmpeg
-   PUPImage m_overlay;       // PuPOverlays/PuPAlphas playlist - overlay rendered above video
    std::unique_ptr<PUPMediaManager> m_pMediaPlayerManager;
    bool m_labelInit = false;
    int m_pagenum = 0;

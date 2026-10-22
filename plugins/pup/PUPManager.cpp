@@ -176,6 +176,7 @@ void PUPManager::ApplyGameDir(const std::filesystem::path& path, const std::stri
 
    // Load Fonts
    LoadFonts();
+   m_sounds.Load(m_szPath);
 }
 
 void PUPManager::SetGameDir(const ControllerDef& controller)
@@ -425,6 +426,7 @@ void PUPManager::Unload()
    m_reportedMissingIdentification = false;
 
    UnloadFonts();
+   m_sounds.Unload();
 
    for (auto& playlist : m_playlists)
       delete playlist;
@@ -1009,6 +1011,10 @@ void PUPManager::DuckAllExcept(int percent, int masterScreenNum, bool all)
       Unduck();
       return;
    }
+   // PinUP ignores a new duck request while another screen is still the duck source.
+   for (const auto& [key, screen] : m_screenMap)
+      if (screen->IsDuckMaster())
+         return;
    for (const auto& [key, screen] : m_screenMap)
    {
       if (key == masterScreenNum && !all)
@@ -1070,6 +1076,22 @@ void PUPManager::QueueDOFEvent(char c, int id, int value)
          }
       }
    }
+}
+
+void PUPManager::SetMessageHandler(void* owner, std::function<void(int, const string&)> customFunction, std::function<void(const string&)> sendMsg)
+{
+   m_messageHandlerOwner = owner;
+   m_customFunction = std::move(customFunction);
+   m_sendMsg = std::move(sendMsg);
+}
+
+void PUPManager::ClearMessageHandler(void* owner)
+{
+   if (m_messageHandlerOwner != owner)
+      return;
+   m_messageHandlerOwner = nullptr;
+   m_customFunction = nullptr;
+   m_sendMsg = nullptr;
 }
 
 void PUPManager::RunLater(double seconds, std::function<void()> fn)

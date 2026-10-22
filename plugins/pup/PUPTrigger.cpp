@@ -73,9 +73,10 @@ static vector<PUPTrigger::PUPTriggerCondition> ParseConditions(const string& tri
 }
 
 PUPTrigger::PUPTrigger(bool active, const string& szDescript, const string& szTrigger, PUPScreen* pScreen, PUPPlaylist* pPlaylist, const std::filesystem::path& szPlayFile, float volume,
-   int priority, int length, int counter, int restSeconds, PlayAction playAction, bool useDefaults)
+   int priority, int length, int counter, int restSeconds, PlayAction playAction, bool useDefaults, const string& szCustomFunction)
    : m_szDescript(szDescript)
    , m_szTrigger(szTrigger)
+   , m_szCustomFunction(szCustomFunction)
    , m_pScreen(pScreen)
    , m_pPlaylist(pPlaylist)
    , m_active(active)
@@ -138,6 +139,27 @@ PUPTrigger::PUPTrigger(bool active, const string& szDescript, const string& szTr
       m_action = [&]() { m_pScreen->Stop(m_pPlaylist, m_szPlayFile); };
       break;
 
+   case PlayAction::PlaySSF:
+      m_action = [&]()
+      {
+         int pos[3] = { 0, 0, 0 };
+         std::istringstream stream(m_szCustomFunction);
+         string field;
+         for (int i = 0; i < 3 && std::getline(stream, field, ','); i++)
+            pos[i] = string_to_int(trim_string(field), 0);
+         m_pScreen->GetManager()->PlaySound(PluginStrings::PathToUTF8(m_szPlayFile), pos[0], pos[1], pos[2], static_cast<int>(m_volume), ""s);
+      };
+      break;
+
+   case PlayAction::CustomFunction:
+      m_action = [&]()
+      {
+         m_pScreen->GetManager()->CustomFunction(m_pScreen->GetScreenNum(), m_szCustomFunction);
+         if (!m_szPlayFile.empty())
+            m_pScreen->GetManager()->SendMsg(PluginStrings::PathToUTF8(m_szPlayFile));
+      };
+      break;
+
    default:
       LOGE("Invalid play action: " + PlayActionToString(m_playAction));
       m_action = [](){};
@@ -169,10 +191,23 @@ PUPTrigger* PUPTrigger::CreateFromCSV(PUPScreen* pScreen, const string& line)
       return nullptr;
    }
 
+   if (StrCompareNoCase(triggerPlayAction, "PlaySSF"s)) {
+      // The file column is the sound name and the counter column its "x,y,z" position;
+      // PinUP plays nothing when fewer than three position fields are given.
+      if (std::count(parts[10].begin(), parts[10].end(), ',') < 2)
+      {
+         LOGE("PlaySSF trigger without a x,y,z position: " + line);
+         return nullptr;
+      }
+      return new PUPTrigger(active, parts[2], parts[3], pScreen, nullptr, PluginStrings::PathFromUTF8(parts[6]), parts[7].empty() ? 100.f : string_to_float(parts[7], 100), 0, 0, 0,
+         string_to_int(parts[11], 0), PlayAction::PlaySSF, false, parts[10]);
+   }
+
    if (StrCompareNoCase(triggerPlayAction, "CustomFunc"s)) {
-      // TODO parse the custom function and call PUPPinDisplay::SendMSG when triggered
-      NOT_IMPLEMENTED("CustomFunc not implemented: " + line);
-      return nullptr;
+      // The playlist column holds the custom function JSON, applied to this screen. The
+      // file column, when set, is posted as a regular PuP message (PinUP SendSelfPuPMSG).
+      return new PUPTrigger(active, parts[2], parts[3], pScreen, nullptr, PluginStrings::PathFromUTF8(parts[6]), 100.f, 0, 0, string_to_int(parts[10], 0),
+         string_to_int(parts[11], 0), PlayAction::CustomFunction, false, triggerPlaylist);
    }
 
    // Sometimes an empty playlist but with description is used as a comment/separator.
@@ -317,8 +352,6 @@ void PUPTrigger::Fire(bool checkRest) {
 }
 
 void PUPTrigger::Invoke() {
-   // Remember this as the most recent trigger so LabelShowPage "returnplay" can replay it.
-   m_pScreen->m_lastPlayedTrigger = this;
    Trigger()();
 }
 
@@ -327,7 +360,7 @@ string PUPTrigger::ToString() const {
       ", descript=" + m_szDescript +
       ", trigger=" + m_szTrigger +
       ", screen={" + m_pScreen->ToString() + '}' +
-      ", playlist={" + m_pPlaylist->ToString() + '}' +
+      ", playlist={" + (m_pPlaylist ? m_pPlaylist->ToString() : m_szCustomFunction) + '}' +
       ", playFile=" + PluginStrings::PathToUTF8(m_szPlayFile) +
       ", volume=" + std::to_string(m_volume) +
       ", priority=" + std::to_string(m_priority) +

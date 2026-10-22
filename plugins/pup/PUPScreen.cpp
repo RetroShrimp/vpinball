@@ -255,14 +255,22 @@ void PUPScreen::Unduck()
 void PUPScreen::OnMainMediaEnd()
 {
    assert(std::this_thread::get_id() == m_apiThread);
+   if (m_hideDuringPlay)
+   {
+      m_hideDuringPlay = false;
+      m_hudVisible = true;
+   }
    // Resolve whatever LabelShowPage queued when a splash page started.
-   // Clear state before any replay so a re-entrant trigger doesn't loop here.
    const HudReturn action = m_hudReturn;
    m_hudReturn = HudReturn::None;
    if (action == HudReturn::RestoreHud)
-      m_hudVisible = true;
-   else if (action == HudReturn::ReplayTrigger && m_lastPlayedTrigger)
-      m_lastPlayedTrigger->Invoke();
+   {
+      SetPage(m_defaultPagenum, 0);
+      if (PUPLabel* pBackground = GetLabel("pBackground"s); pBackground && !pBackground->IsAnimating())
+         pBackground->SetVisible(true);
+   }
+   else if (action == HudReturn::RestorePage)
+      SetPage(m_defaultPagenum, 0);
 
    m_fadeVolume = -1;
    m_duckOrigVolume = -1;
@@ -322,6 +330,20 @@ vector<PUPTrigger*>* PUPScreen::GetTriggers(const string& szTrigger)
    return it != m_triggerMap.end() ? &it->second : nullptr;
 }
 
+void PUPScreen::LabelInit()
+{
+   assert(std::this_thread::get_id() == m_apiThread);
+   m_labelInit = true;
+   // PinUP's label canvas always starts with a pBACKGROUND label drawn below the others.
+   if (!GetLabel("pBackground"s))
+   {
+      PUPLabel* const pBackground = new PUPLabel(m_pManager, "pBackground"s, "Liberation Sans"s, 50.f, 0xFF, 0.f,
+         PUP_LABEL_XALIGN_CENTER, PUP_LABEL_YALIGN_CENTER, 0.f, 0.f, -1, true);
+      AddLabel(pBackground);
+      SendLabelToBack(pBackground);
+   }
+}
+
 void PUPScreen::AddLabel(PUPLabel* pLabel)
 {
    assert(std::this_thread::get_id() == m_apiThread);
@@ -359,31 +381,93 @@ void PUPScreen::SendLabelToFront(PUPLabel* pLabel)
       std::rotate(it, it + 1, m_labels.end());
 }
 
-void PUPScreen::SetPage(int pagenum, int durationMs)
+void PUPScreen::SendLabelToBackground(PUPLabel* pLabel)
 {
    assert(std::this_thread::get_id() == m_apiThread);
+   auto it = std::find(m_labels.begin(), m_labels.end(), pLabel);
+   if (it == m_labels.end())
+      return;
+   // PUP's zback value other than -1 puts the label just in front of the first
+   // (background) label rather than behind everything.
+   const size_t target = std::min<size_t>(1, m_labels.size() - 1);
+   if (static_cast<size_t>(it - m_labels.begin()) == target)
+      return;
+   m_labels.erase(it);
+   m_labels.insert(m_labels.begin() + target, pLabel);
+}
 
-   // Reapply each label's on-show default ONLY when the page actually changes. A same-page
-   // hold (e.g. KOTH ball-save LabelShowPage(5,1,3)) must leave script-toggled labels alone -
-   // that was the disappearing-bonus-labels bug.
-   if (pagenum == m_pagenum)
+void PUPScreen::RemoveLabel(PUPLabel* pLabel)
+{
+   assert(std::this_thread::get_id() == m_apiThread);
+   auto it = std::find(m_labels.begin(), m_labels.end(), pLabel);
+   if (it == m_labels.end())
+      return;
+   m_labelMap.erase(lowerCase(pLabel->GetName()));
+   m_labels.erase(it);
+   delete pLabel;
+}
+
+void PUPScreen::SetPage(int pagenum, int durationMs, const string& special)
+{
+   assert(std::this_thread::get_id() == m_apiThread);
+   if (m_hideDuringPlay)
+      return;
+
+   // Mirrors PinUpDisplayX TtextForm.SetPageNum: hidehudplay/returnplay arm an action for
+   // the end of the current media, forceshow/forcehide only touch visibility, a same-page
+   // call with nothing armed just clears animations and extends the timer, otherwise the
+   // page switches, animations end, and labels on the new page get 'clear' / their default
+   // visibility (pages above 1 only, and only when dodefault is on).
+   const string szSpecial = lowerCase(special);
+   if (szSpecial == "hidehudplay"s)
    {
+      m_hudReturn = HudReturn::RestoreHud;
+      if (PUPLabel* pBackground = GetLabel("pBackground"s); pBackground && !pBackground->IsAnimating())
+         pBackground->SetVisible(false);
+   }
+   else if (szSpecial == "returnplay"s)
+      m_hudReturn = HudReturn::RestorePage;
+   else
+      m_hudReturn = HudReturn::None;
+
+   if (special == "forceshow"s || special == "forcehide"s)
+   {
+      if (pagenum >= 0)
+         for (PUPLabel* pLabel : m_labels)
+            if (pLabel->GetPagenum() == pagenum)
+               pLabel->SetVisible(special == "forceshow"s && pLabel->GetOnShowVisible());
+      return;
+   }
+
+   if (pagenum == m_pagenum && m_hudReturn == HudReturn::None)
+   {
+      for (PUPLabel* pLabel : m_labels)
+         pLabel->ClearAnimation();
       if (m_pageExpiry && durationMs > 0)
          m_pageExpiry += static_cast<uint64_t>(durationMs);
       return;
    }
+
    m_pagenum = pagenum;
-
-   for (const auto& label : m_labels)
-      label->SetVisible(label->GetOnShowVisible());
-
-   if (durationMs <= 0)
+   for (PUPLabel* pLabel : m_labels)
    {
-      m_defaultPagenum = pagenum;
-      m_pageExpiry = 0;
+      pLabel->ClearAnimation();
+      if (pLabel->GetPagenum() != pagenum)
+         continue;
+      if (szSpecial == "clear"s)
+         pLabel->SetCaption(""s);
+      if (pagenum > 1 && pLabel->GetDoDefault())
+         pLabel->SetVisible(pLabel->GetOnShowVisible());
    }
-   else
+
+   if (durationMs > 0)
       m_pageExpiry = SDL_GetTicks() + static_cast<uint64_t>(durationMs);
+   else
+   {
+      m_pageExpiry = 0;
+      if (pagenum >= 0)
+         m_defaultPagenum = pagenum;
+   }
 }
 
 void PUPScreen::UpdateTimers()
@@ -393,7 +477,7 @@ void PUPScreen::UpdateTimers()
    if (m_pageExpiry && now >= m_pageExpiry)
    {
       m_pageExpiry = 0;
-      m_pagenum = m_defaultPagenum;
+      SetPage(m_defaultPagenum, 0);
    }
    if (m_imageExpiry && now >= m_imageExpiry)
    {
@@ -502,7 +586,15 @@ void PUPScreen::Play(PUPPlaylist* pPlaylist, const std::filesystem::path& szPlay
 
    case PUPPlaylist::Function::Overlays:
    case PUPPlaylist::Function::Alphas:
-      m_overlay.Load(pPlaylist->GetPlayFilePath(szPlayFile));
+      // PinUP routes both through assignAlphaFramePNG: the file becomes the pBackground
+      // label's image, stretched over the label canvas, so it follows pBackground's
+      // visibility (pDMDSetHUD, hidehudplay) and sits below the other labels.
+      LabelInit();
+      if (PUPLabel* pBackground = GetLabel("pBackground"s))
+      {
+         pBackground->SetCaption(PluginStrings::PathToUTF8(pPlaylist->GetFolder() / szPlayFile));
+         pBackground->SetSpecial("{\"mt\":2, \"width\":100, \"height\":100, \"xpos\":50, \"ypos\":50}"s);
+      }
       break;
 
    case PUPPlaylist::Function::Shapes:
@@ -611,14 +703,17 @@ void PUPScreen::Render(VPXRenderContext2D* const ctx, int pass) {
          m_staticImage.Render(ctx, m_rect, m_screenAlpha);
       break;
 
-   case 2:
-      if (m_hudVisible)
-         m_overlay.Render(ctx, m_rect, m_screenAlpha * m_overlayAlpha);
-      break;
-
    case 3:
+      if (!m_hudVisible)
+         break;
+      // PUP draws the animation copies after all regular labels, so an animated
+      // label overlays the rest of the page regardless of its creation order.
       for (PUPLabel* pLabel : m_labels)
-         pLabel->Render(ctx, m_rect, m_pagenum, m_screenAlpha * m_overlayAlpha);
+         if (!pLabel->IsAnimating())
+            pLabel->Render(ctx, m_rect, m_pagenum, m_screenAlpha * m_overlayAlpha);
+      for (PUPLabel* pLabel : m_labels)
+         if (pLabel->IsAnimating())
+            pLabel->Render(ctx, m_rect, m_pagenum, m_screenAlpha * m_overlayAlpha);
       break;
    }
 }
