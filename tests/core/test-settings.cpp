@@ -19,6 +19,8 @@ TEST_CASE("Settings")
       settings.SetPlayerVR_SeatedHeight(-45.f, false);
       settings.SetPlayerVR_SeatedDistance(75.f, false);
       settings.SetPlayerVR_SeatedTilt(90.f, false);
+      CHECK(settings.GetPlayerVR_SeatedScale() == doctest::Approx(1.f));
+      settings.SetPlayerVR_SeatedScale(0.9f, false);
       settings.Save();
 
       Settings loaded;
@@ -28,6 +30,7 @@ TEST_CASE("Settings")
       CHECK(loaded.GetPlayerVR_SeatedHeight() == doctest::Approx(-45.f));
       CHECK(loaded.GetPlayerVR_SeatedDistance() == doctest::Approx(75.f));
       CHECK(loaded.GetPlayerVR_SeatedTilt() == doctest::Approx(90.f));
+      CHECK(loaded.GetPlayerVR_SeatedScale() == doctest::Approx(0.9f));
    }
 
    SUBCASE("defaults, set and reset")

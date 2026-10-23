@@ -130,6 +130,7 @@ VRDevice::VRDevice(const Settings& settings)
       m_seatedHeight = settings.GetPlayerVR_SeatedHeight();
       m_seatedDistance = settings.GetPlayerVR_SeatedDistance();
       m_seatedTilt = settings.GetPlayerVR_SeatedTilt();
+      m_seatedScale = settings.GetPlayerVR_SeatedScale();
 
    #if defined(ENABLE_XR)
       // Relative scale factor and positioning
@@ -1248,8 +1249,9 @@ void VRDevice::RenderFrame(RenderDevice* rd, const std::function<void(RenderTarg
             m_slope = liveSlope;
 
             // Update fixed scaling, considering lockbar size to be the width of the playfield + 2"1/4
+            // Seated mode has no physical cabinet to match, so it uses its own scale (real life size by default)
             const float tableWidth = VPUTOCM(table->m_right - table->m_left) + 2.25f * 2.54f;
-            m_scale = clamp(m_lockbarWidth / tableWidth, 0.1f, 2.0f);
+            m_scale = m_seatedMode ? clamp(m_seatedScale, 0.1f, 2.0f) : clamp(m_lockbarWidth / tableWidth, 0.1f, 2.0f);
             const Matrix3D sceneScale = Matrix3D::MatrixScale(m_scale);
             const Matrix3D invSceneScale = Matrix3D::MatrixScale(1.f / m_scale);
 
@@ -1616,4 +1618,5 @@ void VRDevice::SaveVRSettings(Settings& settings) const
    settings.SetPlayerVR_SeatedHeight(m_seatedHeight, false);
    settings.SetPlayerVR_SeatedDistance(m_seatedDistance, false);
    settings.SetPlayerVR_SeatedTilt(m_seatedTilt, false);
+   settings.SetPlayerVR_SeatedScale(m_seatedScale, false);
 }

@@ -42,10 +42,14 @@ void VRSettingsPage::BuildPage()
       Settings::m_propPlayerVR_SeatedTilt, 1.f, "%4.1f deg"s, //
       [this]() { return m_player->m_vrDevice->GetSeatedTilt(); }, //
       [this](float, float v) { m_player->m_vrDevice->SetSeatedTilt(v); }));
+   addGlobalOnlyItem(std::make_unique<InGameUIItem>( //
+      Settings::m_propPlayerVR_SeatedScale, 100.f, "%4.1f %%"s, //
+      [this]() { return m_player->m_vrDevice->GetSeatedScale(); }, //
+      [this](float, float v) { m_player->m_vrDevice->SetSeatedScale(v); }));
    AddItem(std::make_unique<InGameUIItem>("Recenter Seated View"s, "Settle into your playing position, then select to anchor the table to your current headset position."s,
       [this]() { m_player->m_vrDevice->RecenterTable(); }));
    AddItem(std::make_unique<InGameUIItem>(InGameUIItem::LabelType::Info,
-      "Seated mode uses its own height and distance instead of standing view offsets. Height and distance rotate with seated tilt. Save changes to use these settings across tables."s));
+      "Seated mode uses its own height, distance and scale instead of standing view offsets and lockbar width. Height and distance rotate with seated tilt. Save changes to use these settings across tables."s));
 #endif
 
    AddItem(std::make_unique<InGameUIItem>(InGameUIItem::LabelType::Header, "View Offset"s));

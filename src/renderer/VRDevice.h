@@ -173,6 +173,8 @@ public:
    void SetSeatedDistance(float distance) { m_seatedDistance = distance; m_worldDirty = true; }
    float GetSeatedTilt() const { return m_seatedTilt; }
    void SetSeatedTilt(float tilt) { m_seatedTilt = tilt; m_worldDirty = true; }
+   float GetSeatedScale() const { return m_seatedScale; }
+   void SetSeatedScale(float scale) { m_seatedScale = scale; m_worldDirty = true; }
    void SaveVRSettings(Settings& settings) const;
 
    void UpdateVRPosition(PartGroupData::SpaceReference spaceRef, ModelViewProj& mvp);
@@ -196,6 +198,7 @@ private:
    float m_seatedHeight = -30.f;
    float m_seatedDistance = 30.f;
    float m_seatedTilt = 0.f;
+   float m_seatedScale = 1.f; // Scene scale in seated mode (1 = real life size, lockbar width is ignored)
    bool m_seatedAnchorValid = false;
    Vertex3Ds m_seatedHeadPosition { 0.f, 0.f, 0.f }; // Tracking space, VPU; captured only when recentering
 
