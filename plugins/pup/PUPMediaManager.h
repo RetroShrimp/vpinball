@@ -23,7 +23,7 @@ public:
    void Resume();
    void SetAsBackGround(bool isBackground);
    void SetLoop(bool isLoop);
-   void SetMaxLength(int length);
+   void SetLengthFromNow(int seconds);
    void SetVolume(float volume);
    void Stop();
    void StopBackground();
@@ -43,6 +43,7 @@ private:
    void PlayBackground();
    void StartCurrent();
    void ApplyDuckPrefix(const std::filesystem::path& path);
+   void CheckEndTime();
 
    PUPMediaPlayer m_player;
 
@@ -51,8 +52,9 @@ private:
       std::filesystem::path szPath;
       float volume = 1.f;
       int priority = 0;
-      int length = 0;
+      uint64_t endTicks = 0;
       bool loop = false;
+      double resumeAt = 0.0;
    };
 
    // Playback queue. front() is currently playing; the rest are pending.
@@ -64,15 +66,17 @@ private:
       std::filesystem::path szPath;
       float volume = 1.0f;
       bool active = false;
-      bool setViaSetBackGround = false;
    };
    BackgroundConfig m_bg;
+   uint64_t m_bgEndTicks = 0;
+   double m_bgResumeAt = 0.0;
 
    std::shared_ptr<SDL_Surface> m_mask = nullptr;
 
    PUPScreen* const m_pScreen;
    SDL_Rect m_bounds;
 
+   unsigned int m_loopCount = 0;
    int m_fadeStep = 255;
    int m_currentAlpha = 255;
 };

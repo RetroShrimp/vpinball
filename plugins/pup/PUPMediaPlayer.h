@@ -16,14 +16,15 @@ public:
 
    void SetGameTime(double gameTime);
 
-   void Play(const std::filesystem::path& filename, float volume);
+   void Play(const std::filesystem::path& filename, float volume, double startPosition = 0.0);
+   double GetPosition() const { return m_position.load(); }
    const std::filesystem::path& GetFilename() const { return m_filename; }
+   unsigned int GetLoopCount() const { return m_loopCount.load(); }
    bool IsPlaying();
    void Pause(bool pause);
    void Stop();
    void SetVolume(float volume);
    void SetLoop(bool loop);
-   void SetLength(int length);
    void Render(VPXRenderContext2D* const ctx, const SDL_Rect& destRect, float alpha = 1.f);
 
    void SetName(const string& name);
@@ -61,8 +62,8 @@ private:
    std::filesystem::path m_filename;
    bool m_loop = false;
    int m_playIndex = 0;
+   std::atomic<unsigned int> m_loopCount = 0;
    float m_volume = 100.f;
-   int m_length = 0;
 
    bool m_paused = false;
    double m_pauseTimestamp = 0.0;
@@ -75,6 +76,9 @@ private:
    AVCodecContext* m_pVideoContext = nullptr;
    bool m_videoPtsBaseValid = false;
    double m_videoPtsBase = 0.0;
+   bool m_audioPtsBaseValid = false;
+   double m_audioPtsBase = 0.0;
+   std::atomic<double> m_position = 0.0;
 
    // Slots of unordered decoded frames
    struct FrameInfo
@@ -92,6 +96,7 @@ private:
    std::atomic<uint64_t> m_endTicks = 0;
    SwsContext* m_swsContext = nullptr;
    uint64_t m_lastRenderTicks = 0;
+   uint64_t m_playTicks = 0;
 
    std::shared_ptr<SDL_Surface> m_mask = nullptr;
    std::unique_ptr<SDL_Surface, void (*)(SDL_Surface*)> m_scaledMask;

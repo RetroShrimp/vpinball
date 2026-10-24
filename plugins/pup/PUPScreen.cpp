@@ -70,11 +70,14 @@ PUPScreen::~PUPScreen()
 
 std::unique_ptr<PUPScreen> PUPScreen::CreateFromCSV(PUPManager* manager, const string& line, const std::vector<PUPPlaylist*>& playlists)
 {
+   if (trim_string(line).empty())
+      return nullptr;
    vector<string> parts = parse_csv_line(line);
-   if (parts.size() != 8) {
-      LOGE(std::format("Failed to parse screen line, expected 8 columns but got {}: {}", parts.size(), line));
+   if (parts.size() < 6) {
+      LOGE(std::format("Failed to parse screen line, expected at least 6 columns but got {}: {}", parts.size(), line));
       return nullptr;
    }
+   parts.resize(std::max<size_t>(parts.size(), 8));
 
    PUPScreen::Mode mode;
    if (StrCompareNoCase(parts[5], "Show"s))
@@ -116,13 +119,15 @@ std::unique_ptr<PUPScreen> PUPScreen::CreateFromCSV(PUPManager* manager, const s
 
 std::unique_ptr<PUPScreen> PUPScreen::CreateDefault(PUPManager* manager, int screenNum, const std::vector<PUPPlaylist*>& playlists)
 {
-   switch(screenNum) {
-   case PUP_SCREEN_TOPPER: return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, PUP_SCREEN_TOPPER, "Topper"s, false, 100, nullptr, playlists);
-   case PUP_SCREEN_DMD: return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, PUP_SCREEN_DMD, "DMD"s, false, 100, nullptr, playlists);
-   case PUP_SCREEN_BACKGLASS: return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, PUP_SCREEN_BACKGLASS, "Backglass"s, false, 100, nullptr, playlists);
-   case PUP_SCREEN_PLAYFIELD: return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, PUP_SCREEN_PLAYFIELD, "Playfield"s, false, 100, nullptr, playlists);
-   default: return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, screenNum, "Unknown"s, false, 100, nullptr, playlists);
+   const char* screenDes;
+   switch (screenNum) {
+   case PUP_SCREEN_TOPPER: screenDes = "Topper"; break;
+   case PUP_SCREEN_DMD: screenDes = "DMD"; break;
+   case PUP_SCREEN_BACKGLASS: screenDes = "Backglass"; break;
+   case PUP_SCREEN_PLAYFIELD: screenDes = "Playfield"; break;
+   default: screenDes = "Unknown"; break;
    }
+   return std::make_unique<PUPScreen>(manager, PUPScreen::Mode::Show, screenNum, string(screenDes), false, 100, nullptr, playlists);
 }
 
 void PUPScreen::LoadTriggers()
@@ -252,7 +257,7 @@ void PUPScreen::Unduck()
       ApplyVolume(orig);
 }
 
-void PUPScreen::OnMainMediaEnd()
+void PUPScreen::OnMediaEnd()
 {
    assert(std::this_thread::get_id() == m_apiThread);
    if (m_hideDuringPlay)
@@ -323,17 +328,9 @@ void PUPScreen::AddTrigger(PUPTrigger* pTrigger)
    m_triggerMap[pTrigger->GetTrigger()].push_back(pTrigger);
 }
 
-vector<PUPTrigger*>* PUPScreen::GetTriggers(const string& szTrigger)
-{
-   assert(std::this_thread::get_id() == m_apiThread);
-   ankerl::unordered_dense::map<string, vector<PUPTrigger*>>::iterator it = m_triggerMap.find(szTrigger);
-   return it != m_triggerMap.end() ? &it->second : nullptr;
-}
-
 void PUPScreen::LabelInit()
 {
    assert(std::this_thread::get_id() == m_apiThread);
-   m_labelInit = true;
    // PinUP's label canvas always starts with a pBACKGROUND label drawn below the others.
    if (!GetLabel("pBackground"s))
    {
@@ -489,10 +486,14 @@ void PUPScreen::UpdateTimers()
 void PUPScreen::SetBounds(int x, int y, int w, int h)
 {
    assert(std::this_thread::get_id() == m_apiThread);
-   m_rect = m_pCustomPos ? m_pCustomPos->ScaledRect(w, h) : SDL_Rect { 0, 0, w, h };
-   m_rect.x += x;
-   m_rect.y += y;
-   m_pMediaPlayerManager->SetBounds(m_rect);
+   SDL_Rect rect = m_pCustomPos ? m_pCustomPos->ScaledRect(w, h) : SDL_Rect { 0, 0, w, h };
+   rect.x += x;
+   rect.y += y;
+   if (rect.x != m_rect.x || rect.y != m_rect.y || rect.w != m_rect.w || rect.h != m_rect.h)
+   {
+      m_rect = rect;
+      m_pMediaPlayerManager->SetBounds(m_rect);
+   }
 
    for (auto pChildren : m_children)
       pChildren->SetBounds(x, y, w, h);
@@ -506,7 +507,15 @@ void PUPScreen::SetCustomPos(const string& szCustomPos)
 
 void PUPScreen::SetGameTime(double gameTime) { m_pMediaPlayerManager->SetGameTime(gameTime); }
 
-void PUPScreen::Play(const string& szPlaylist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action)
+void PUPScreen::Update(double gameTime)
+{
+   assert(std::this_thread::get_id() == m_apiThread);
+   UpdateTimers();
+   UpdateVolumeFade();
+   m_pMediaPlayerManager->SetGameTime(gameTime);
+}
+
+void PUPScreen::Play(const string& szPlaylist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action, int length)
 {
    assert(std::this_thread::get_id() == m_apiThread);
    PUPPlaylist* const pPlaylist = GetPlaylist(szPlaylist);
@@ -515,7 +524,7 @@ void PUPScreen::Play(const string& szPlaylist, const std::filesystem::path& szPl
       LOGE(std::format("Playlist not found: screen={{{}}}, playlist={}", ToString(false), szPlaylist));
       return;
    }
-   Play(pPlaylist, szPlayFile, volume, priority, action, 0);
+   Play(pPlaylist, szPlayFile, volume, priority, action, length);
 }
 
 void PUPScreen::Play(PUPPlaylist* pPlaylist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action, int length)
@@ -530,18 +539,24 @@ void PUPScreen::Play(PUPPlaylist* pPlaylist, const std::filesystem::path& szPlay
    {
       // PNGs/JPGs bypass FFmpeg — loaded as static image on the video layer.
       // Persists until replaced by a new image or video play.
-      const string ext = extension_from_path(PluginStrings::PathToUTF8(szPlayFile));
+      const string ext = extension_from_path(PluginStrings::PathToUTF8(szPlayFile.empty() ? pPlaylist->PeekNextPlayFile() : szPlayFile));
       if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp")
       {
+         const std::filesystem::path imagePath = pPlaylist->GetPlayFilePath(szPlayFile);
+         if (imagePath.empty())
+         {
+            LOGE(std::format("PlayFile not found: screen={{{}}}, playlist={{{}}}, playFile={}", ToString(false), pPlaylist->ToString(), PluginStrings::PathToUTF8(szPlayFile)));
+            break;
+         }
          if (background)
          {
-            m_background.Load(pPlaylist->GetPlayFilePath(szPlayFile));
+            m_background.Load(imagePath);
             m_pMediaPlayerManager->StopBackground();
          }
          else
          {
             Stop();
-            m_staticImage.Load(pPlaylist->GetPlayFilePath(szPlayFile));
+            m_staticImage.Load(imagePath);
             m_imageExpiry = (length > 0) ? (SDL_GetTicks() + static_cast<uint64_t>(length) * 1000) : 0;
          }
          break;
@@ -574,9 +589,11 @@ void PUPScreen::Play(PUPPlaylist* pPlaylist, const std::filesystem::path& szPlay
       case Mode::Show:
          break;
       }
-      m_staticImage.Clear();
       if (const int vol = ResolveVolume(volume, pPlaylist); m_pMediaPlayerManager->Play(pPlaylist, szPlayFile, EffectiveVolume(vol), priority, action, length))
+      {
+         m_staticImage.Clear();
          m_currentVolume = vol;
+      }
       break;
    }
 
@@ -617,7 +634,6 @@ void PUPScreen::Stop()
 {
    assert(std::this_thread::get_id() == m_apiThread);
    m_pMediaPlayerManager->Stop();
-   m_imageExpiry = 0;
 }
 
 void PUPScreen::Stop(int priority)
@@ -650,12 +666,12 @@ void PUPScreen::SetLoop(int state)
    m_pMediaPlayerManager->SetLoop(state != 0);
 }
 
-void PUPScreen::SetLength(int length)
+void PUPScreen::SetLength(int seconds)
 {
    assert(std::this_thread::get_id() == m_apiThread);
-   m_pMediaPlayerManager->SetMaxLength(length);
-   if (length > 0 && !m_staticImage.GetFile().empty())
-      m_imageExpiry = SDL_GetTicks() + static_cast<uint64_t>(length) * 1000;
+   m_pMediaPlayerManager->SetLengthFromNow(seconds);
+   if (seconds > 0 && !m_staticImage.GetFile().empty())
+      m_imageExpiry = SDL_GetTicks() + static_cast<uint64_t>(seconds) * 1000;
 }
 
 void PUPScreen::SetAsBackGround(int mode)
@@ -684,13 +700,11 @@ bool PUPScreen::IsBackgroundPlaying() const
 void PUPScreen::Render(VPXRenderContext2D* const ctx, int pass) {
    assert(std::this_thread::get_id() == m_apiThread);
 
-   UpdateTimers();
-
    // ForcePop / ForcePopBack only affect z-order (topmost), handled by the render-order tiers
    // in PUPManager::Render. The screen still renders its background, overlay, labels and static
    // image when no main video is playing, so packs that drive a screen purely via background
    // videos, overlays, or labels stay visible.
-   if (m_mode == Mode::Off || m_mode == Mode::MusicOnly)
+   if (m_mode == Mode::Off || m_mode == Mode::MusicOnly || m_hidden)
       return;
 
    switch (pass)

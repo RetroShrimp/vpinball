@@ -40,7 +40,6 @@ public:
 
    PUPManager* GetManager() const { return m_pManager; }
    int GetScreenNum() const { return m_screenNum; }
-   const string& GetScreenDes() const { return m_screenDes; }
    string ToString(bool full = true) const;
 
    Mode GetMode() const { return m_mode; }
@@ -51,7 +50,8 @@ public:
    bool IsTopmost() const { return m_topmost; }
    void SetTopmost(bool topmost) { m_topmost = topmost; }
 
-   bool IsTransparent() const { return m_transparent; }
+   bool IsHidden() const { return m_hidden; }
+   void SetHidden(bool hidden) { m_hidden = hidden; }
 
    float m_screenAlpha = 1.0f;
    float m_overlayAlpha = 1.0f;
@@ -66,11 +66,9 @@ public:
       RestorePage, // "returnplay":  return to the default page
    };
    HudReturn m_hudReturn = HudReturn::None;
-   void OnMainMediaEnd();
+   void OnMediaEnd();
 
    int GetDefaultVolume() const { return m_defaultVolume; }
-   int GetCurrentVolume() const { return m_currentVolume; }
-   int GetVolumeMultiplier() const { return m_volumeMultiplier; }
    void SetMainVolume(float volume);
    void SetVolumeMultiplier(int multiplier);
    void SetDefaultVolume(int volume);
@@ -93,7 +91,6 @@ public:
    bool HasChildren() const { return !m_children.empty(); }
 
    void AddTrigger(PUPTrigger* pTrigger);
-   vector<PUPTrigger*>* GetTriggers(const string& szTrigger);
    const ankerl::unordered_dense::map<string, vector<PUPTrigger*>>& GetTriggers() const { return m_triggerMap; }
 
    void LabelInit();
@@ -105,7 +102,6 @@ public:
    void RemoveLabel(PUPLabel* pLabel);
    int GetPage() const { return m_pagenum; }
    void SetPage(int pagenum, int durationMs, const string& special = ""s);
-   const vector<PUPLabel*>& GetLabels() const { return m_labels; }
 
    void AddPlaylist(PUPPlaylist* pPlaylist);
    PUPPlaylist* GetPlaylist(const string& szFolder);
@@ -113,8 +109,9 @@ public:
    void SetMask(const std::filesystem::path& path);
 
    void SetGameTime(double gameTime);
+   void Update(double gameTime);
 
-   void Play(const string& szPlaylist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action = PlayAction::Normal);
+   void Play(const string& szPlaylist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action = PlayAction::Normal, int length = 0);
    void Play(PUPPlaylist* playlist, const std::filesystem::path& szPlayFile, float volume, int priority, PlayAction action, int length);
    void Stop();
    void Stop(int priority);
@@ -122,15 +119,13 @@ public:
    void Pause();
    void Resume();
    void SetLoop(int state);
-   void SetLength(int length);
+   void SetLength(int seconds);
    void SetAsBackGround(int mode);
    void SetFadeStep(int step);
 
-   bool HasUnderlay() const { return !m_background.GetFile().empty(); }
    bool IsBackgroundPlaying() const;
    bool IsMainPlaying() const;
 
-   const SDL_Rect& GetRect() const { return m_rect; }
    void Render(VPXRenderContext2D* const ctx, int pass);
 
    static const string& ToString(Mode mode);
@@ -149,6 +144,7 @@ private:
 
    Mode m_mode;
    bool m_topmost = false;
+   bool m_hidden = false;
    bool m_transparent;
    float m_mainVolume = 1.f;
    int m_volumeMultiplier;
@@ -162,7 +158,7 @@ private:
    int m_volumeFadeStep = 0;
    uint64_t m_fadeNextTick = 0;
    std::unique_ptr<PUPCustomPos> m_pCustomPos;
-   SDL_Rect m_rect;
+   SDL_Rect m_rect {};
    vector<PUPLabel*> m_labels;
    ankerl::unordered_dense::map<string, PUPLabel*> m_labelMap;
    ankerl::unordered_dense::map<string, PUPPlaylist*> m_playlistMap;
@@ -170,7 +166,6 @@ private:
    PUPImage m_background;    // PuPFrames playlist - underlay behind video
    PUPImage m_staticImage;   // Static PNG/JPG from Default function - renders on video layer, bypasses FFmpeg
    std::unique_ptr<PUPMediaManager> m_pMediaPlayerManager;
-   bool m_labelInit = false;
    int m_pagenum = 0;
    int m_defaultPagenum = 0;
    uint64_t m_pageExpiry = 0;
