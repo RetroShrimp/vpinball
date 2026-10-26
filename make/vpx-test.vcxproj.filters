@@ -65,6 +65,9 @@
     <ClCompile Include="../../tests/core/test-settings.cpp">
       <Filter>core</Filter>
     </ClCompile>
+    <ClCompile Include="../../tests/render/test-vr-seated-view.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="../../tests/core/test-tabledb.cpp">
       <Filter>core</Filter>
     </ClCompile>

@@ -77,6 +77,7 @@ set(VPX_TEST_SOURCES
    tests/render/test-base-render.cpp
    tests/render/test-mirror-render.cpp
    tests/render/test-renderframe.cpp
+   tests/render/test-vr-seated-view.cpp
    tests/vpx-test.cpp
    tests/vpx-test.h
 )
@@ -244,6 +245,7 @@ if(PLATFORM STREQUAL "windows")
          COMMAND "${CMAKE_COMMAND}" -E copy "${RUNTIME_LIBS_DIR}/$<IF:$<STREQUAL:${ARCH},x64>,freeimage64.dll,freeimage.dll>" "$<TARGET_FILE_DIR:vpx-test>"
          COMMAND "${CMAKE_COMMAND}" -E copy "${RUNTIME_LIBS_DIR}/$<IF:$<STREQUAL:${ARCH},x64>,SciLexerVP64.dll,SciLexerVP.dll>" "$<TARGET_FILE_DIR:vpx-test>"
          COMMAND "${CMAKE_COMMAND}" -E copy "${RUNTIME_LIBS_DIR}/$<IF:$<STREQUAL:${ARCH},x64>,SDL364.dll,SDL3.dll>" "$<TARGET_FILE_DIR:vpx-test>"
+         COMMAND "${CMAKE_COMMAND}" -E copy "${RUNTIME_LIBS_DIR}/$<IF:$<STREQUAL:${ARCH},x64>,SDL3_ttf64.dll,SDL3_ttf.dll>" "$<TARGET_FILE_DIR:vpx-test>"
       )
       if(RENDERER STREQUAL "BGFX")
          add_custom_command(TARGET vpx-test POST_BUILD
@@ -561,13 +563,8 @@ elseif(PLATFORM STREQUAL "linux")
          COMMAND cp -a "${RUNTIME_LIBS_DIR}/libhidapi-hidraw.so" "$<TARGET_FILE_DIR:vpx-test>"
          COMMAND cp -a "${RUNTIME_LIBS_DIR}/libhidapi-hidraw.so.*" "$<TARGET_FILE_DIR:vpx-test>"
          COMMAND cp -a "${RUNTIME_LIBS_DIR}/libwinevbs.so" "$<TARGET_FILE_DIR:vpx-test>"
-         COMMAND cp -a "${RUNTIME_LIBS_DIR}/libwinevbs.so.*" "$<TARGET_FILE_DIR:vpx-test>"
+         COMMAND cp -a "${RUNTIME_LIBS_DIR}/libwinevbs.so.*" "$<TARGET_FILE_DIR>/vpx-test>"
       )
-      if(RENDERER STREQUAL "BGFX")
-         add_custom_command(TARGET vpx-test POST_BUILD
-            COMMAND cp -a "${RUNTIME_LIBS_DIR}/libbgfx.so" "$<TARGET_FILE_DIR:vpx-test>"
-         )
-      endif()
    endif()
 
 endif()
