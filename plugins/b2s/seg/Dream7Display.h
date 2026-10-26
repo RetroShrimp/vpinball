@@ -170,10 +170,10 @@ private:
    float m_spacing = 20.0f;
    bool m_transparentBackground = false;
    SegmentNumberType m_type = SegmentNumberType_SevenSegment;
-   uint32_t m_offColor = RGB(20, 20, 20);
-   uint32_t m_lightColor = RGB(254, 90, 50);
-   uint32_t m_glassColor = RGB(254, 50, 25);
-   uint32_t m_glassColorCenter = RGB(254, 50, 25);
+   uint32_t m_offColor = MakeRGB(20, 20, 20);
+   uint32_t m_lightColor = MakeRGB(254, 90, 50);
+   uint32_t m_glassColor = MakeRGB(254, 50, 25);
+   uint32_t m_glassColorCenter = MakeRGB(254, 50, 25);
    int m_glassAlpha = 140;
    uint8_t m_glassAlphaCenter = 255;
    float m_glow = 10.0f;
