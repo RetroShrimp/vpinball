@@ -9,6 +9,30 @@
 
 TEST_CASE("Settings")
 {
+   SUBCASE("seated VR preferences survive an ini round-trip")
+   {
+      const std::filesystem::path iniPath = GetTestTmpDir() / "seated-vr.ini";
+      Settings settings;
+      CHECK_FALSE(settings.GetPlayerVR_SeatedMode());
+      settings.SetIniPath(iniPath);
+      settings.SetPlayerVR_SeatedMode(true, false);
+      settings.SetPlayerVR_SeatedHeight(-45.f, false);
+      settings.SetPlayerVR_SeatedDistance(75.f, false);
+      settings.SetPlayerVR_SeatedTilt(90.f, false);
+      CHECK(settings.GetPlayerVR_SeatedScale() == doctest::Approx(1.f));
+      settings.SetPlayerVR_SeatedScale(0.9f, false);
+      settings.Save();
+
+      Settings loaded;
+      loaded.SetIniPath(iniPath);
+      REQUIRE(loaded.Load(false));
+      CHECK(loaded.GetPlayerVR_SeatedMode());
+      CHECK(loaded.GetPlayerVR_SeatedHeight() == doctest::Approx(-45.f));
+      CHECK(loaded.GetPlayerVR_SeatedDistance() == doctest::Approx(75.f));
+      CHECK(loaded.GetPlayerVR_SeatedTilt() == doctest::Approx(90.f));
+      CHECK(loaded.GetPlayerVR_SeatedScale() == doctest::Approx(0.9f));
+   }
+
    SUBCASE("defaults, set and reset")
    {
       Settings settings;

@@ -710,8 +710,8 @@ void B2SRenderer::RenderLegacyScoreDisplay(VPXRenderContext2D* ctx, B2SServer* s
       const uint8_t darkR = static_cast<uint8_t>(std::clamp(reel.m_reelDarkColor.x * 255.f + 0.5f, 0.f, 255.f));
       const uint8_t darkG = static_cast<uint8_t>(std::clamp(reel.m_reelDarkColor.y * 255.f + 0.5f, 0.f, 255.f));
       const uint8_t darkB = static_cast<uint8_t>(std::clamp(reel.m_reelDarkColor.z * 255.f + 0.5f, 0.f, 255.f));
-      const uint32_t litColor = seg::RGB(litR, litG, litB);
-      const uint32_t darkColor = seg::RGB(darkR, darkG, darkB);
+      const uint32_t litColor = seg::MakeRGB(litR, litG, litB);
+      const uint32_t darkColor = seg::MakeRGB(darkR, darkG, darkB);
       if (dream7)
       {
          auto d7 = std::make_unique<seg::Dream7Display>(m_vpxApi);
@@ -722,8 +722,8 @@ void B2SRenderer::RenderLegacyScoreDisplay(VPXRenderContext2D* ctx, B2SServer* s
          d7->SetSpacing(static_cast<float>(reel.m_spacing) * 5.f);
          // Reference color wiring: the glass colors derive from the authored lit segment color
          d7->SetLightColor(litColor);
-         d7->SetGlassColor(seg::RGB(static_cast<uint8_t>(std::min(255, litR + 50)), static_cast<uint8_t>(std::min(255, litG + 50)), static_cast<uint8_t>(std::min(255, litB + 50))));
-         d7->SetGlassColorCenter(seg::RGB(static_cast<uint8_t>(std::min(255, litR + 70)), static_cast<uint8_t>(std::min(255, litG + 70)), static_cast<uint8_t>(std::min(255, litB + 70))));
+         d7->SetGlassColor(seg::MakeRGB(static_cast<uint8_t>(std::min(255, litR + 50)), static_cast<uint8_t>(std::min(255, litG + 50)), static_cast<uint8_t>(std::min(255, litB + 50))));
+         d7->SetGlassColorCenter(seg::MakeRGB(static_cast<uint8_t>(std::min(255, litR + 70)), static_cast<uint8_t>(std::min(255, litG + 70)), static_cast<uint8_t>(std::min(255, litB + 70))));
          d7->SetOffColor(darkColor);
          d7->SetGlassAlpha(140);
          d7->SetGlassAlphaCenter(255);

@@ -35,6 +35,6 @@ inline bool IsRectEmpty(const FRect& r) { return r.w <= 0.f || r.h <= 0.f; }
 inline bool IsRectEmpty(const IRect& r) { return r.w <= 0 || r.h <= 0; }
 
 // Packed 0x00RRGGBB color (COLORREF layout, as used by the reference implementation)
-inline constexpr uint32_t RGB(uint8_t r, uint8_t g, uint8_t b) { return static_cast<uint32_t>(r) | (static_cast<uint32_t>(g) << 8) | (static_cast<uint32_t>(b) << 16); }
+inline constexpr uint32_t MakeRGB(uint8_t r, uint8_t g, uint8_t b) { return static_cast<uint32_t>(r) | (static_cast<uint32_t>(g) << 8) | (static_cast<uint32_t>(b) << 16); }
 
 }
