@@ -106,6 +106,7 @@ if(PLATFORM STREQUAL "windows")
    endif()
 
    if(RENDERER STREQUAL "BGFX")
+      add_dependencies(vpx-test vpx-shaders)
       target_include_directories(vpx-test PUBLIC
          ${CMAKE_CURRENT_SOURCE_DIR}
          ${CMAKE_CURRENT_BINARY_DIR}/${_vpx_intdir}
@@ -294,6 +295,8 @@ elseif(PLATFORM STREQUAL "windows-mingw")
       "${CMAKE_CURRENT_BINARY_DIR}/utf8_manifest.rc"
    )
 
+   add_dependencies(vpx-test vpx-shaders)
+
    target_include_directories(vpx-test PUBLIC
       ${CMAKE_SOURCE_DIR}/third-party/include
       ${CMAKE_SOURCE_DIR}
@@ -391,6 +394,10 @@ elseif(PLATFORM STREQUAL "macos")
       ${VPX_TEST_APP_SOURCES}
    )
 
+   if(RENDERER STREQUAL "BGFX")
+      add_dependencies(vpx-test vpx-shaders)
+   endif()
+
    target_include_directories(vpx-test PUBLIC
       ${CMAKE_SOURCE_DIR}/third-party/include
       ${CMAKE_SOURCE_DIR}
@@ -481,6 +488,10 @@ elseif(PLATFORM STREQUAL "linux")
    add_executable(vpx-test EXCLUDE_FROM_ALL
       ${VPX_TEST_APP_SOURCES}
    )
+
+   if(RENDERER STREQUAL "BGFX")
+      add_dependencies(vpx-test vpx-shaders)
+   endif()
 
    target_include_directories(vpx-test PUBLIC
       ${CMAKE_SOURCE_DIR}/third-party/include
